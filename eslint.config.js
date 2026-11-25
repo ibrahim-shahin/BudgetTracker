@@ -7,4 +7,9 @@ module.exports = defineConfig([
   {
     ignores: ['dist/*', 'coverage/*'],
   },
+  {
+    // jest.mock factories can't use import statements.
+    files: ['**/__tests__/**', 'test-utils/**', 'jest.setup.js'],
+    rules: { '@typescript-eslint/no-require-imports': 'off' },
+  },
 ]);

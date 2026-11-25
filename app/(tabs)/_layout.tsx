@@ -34,7 +34,7 @@ export default function TabLayout() {
       />
       <Tabs.Screen
         name="analytics"
-        options={{ title: 'Analytics', tabBarIcon: ({ color }) => <Feather name="bar-chart-2" size={22} color={color} /> }}
+        options={{ title: 'Insights', tabBarIcon: ({ color }) => <Feather name="bar-chart-2" size={22} color={color} /> }}
       />
       <Tabs.Screen
         name="settings"

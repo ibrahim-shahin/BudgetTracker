@@ -1,391 +1,295 @@
-import React, { useState, useMemo } from 'react';
-import {
-  View,
-  Text,
-  FlatList,
-  TouchableOpacity,
-  StyleSheet,
-  TextInput,
-  ScrollView,
-  Platform,
-} from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import { router } from 'expo-router';
+import React, { useMemo, useState } from 'react';
+import { FlatList, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import * as Haptics from 'expo-haptics';
-import { useColors } from '@/hooks/useColors';
-import { getLastExpenseDateFor, getSpentByCategory, useBudgetStore } from '@/store/budgetStore';
+
+import AmountCell from '@/components/AmountCell';
 import CategoryCard from '@/components/CategoryCard';
-import AddExpenseModal from '@/components/AddExpenseModal';
-import AddCategoryModal from '@/components/AddCategoryModal';
-import ResetModal from '@/components/ResetModal';
 import EmptyState from '@/components/EmptyState';
-import type { Category, SortOption, FilterOption } from '@/types';
+import PeriodSwitcher from '@/components/PeriodSwitcher';
+import { useColors } from '@/hooks/useColors';
+import { useBudgetMonth, useViewedPeriod } from '@/hooks/usePeriod';
+import { useBudgetStore } from '@/store/budgetStore';
+import type { FilterOption, SortOption } from '@/types';
+import type { CategoryMonth } from '@/utils/budget';
+import { confirm } from '@/utils/confirm';
+import { pressFeedback, tapFeedback, warningFeedback } from '@/utils/haptics';
 
 const SORT_OPTIONS: { key: SortOption; label: string }[] = [
   { key: 'name', label: 'Name' },
-  { key: 'remaining', label: 'Remaining' },
-  { key: 'spent', label: 'Most Spent' },
+  { key: 'spent', label: 'Most spent' },
+  { key: 'remaining', label: 'Least left' },
   { key: 'budget', label: 'Budget' },
   { key: 'activity', label: 'Recent' },
-  { key: 'overspent', label: 'Overspent' },
 ];
 
 const FILTER_OPTIONS: { key: FilterOption; label: string }[] = [
   { key: 'all', label: 'All' },
-  { key: 'overspent', label: 'Overspent' },
-  { key: 'under_budget', label: 'Under Budget' },
-  { key: 'no_expenses', label: 'No Expenses' },
+  { key: 'overspent', label: 'Over budget' },
+  { key: 'under_budget', label: 'Within budget' },
+  { key: 'no_expenses', label: 'No expenses' },
 ];
 
-export default function Dashboard() {
+function matchesFilter(row: CategoryMonth, filter: FilterOption): boolean {
+  switch (filter) {
+    case 'overspent':
+      return row.budget > 0 && row.remaining < 0;
+    case 'under_budget':
+      return row.count > 0 && (row.budget === 0 || row.remaining >= 0);
+    case 'no_expenses':
+      return row.count === 0;
+    default:
+      return true;
+  }
+}
+
+function compare(a: CategoryMonth, b: CategoryMonth, sort: SortOption): number {
+  switch (sort) {
+    case 'spent':
+      return b.spent - a.spent;
+    case 'remaining':
+      return a.remaining - b.remaining;
+    case 'budget':
+      return b.budget - a.budget;
+    case 'activity':
+      return (b.lastDate ?? '').localeCompare(a.lastDate ?? '');
+    default:
+      return a.category.name.localeCompare(b.category.name);
+  }
+}
+
+export default function BudgetScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const isWeb = Platform.OS === 'web';
-
-  const categories = useBudgetStore(s => s.categories);
   const currency = useBudgetStore(s => s.currency);
-  const expenses = useBudgetStore(s => s.expenses);
+  const togglePin = useBudgetStore(s => s.togglePin);
+  const deleteCategory = useBudgetStore(s => s.deleteCategory);
+  const { period, current, startDay, setPeriod } = useViewedPeriod();
+  const { rows, totals } = useBudgetMonth(period);
 
-  const [search, setSearch] = useState('');
   const [sort, setSort] = useState<SortOption>('name');
   const [filter, setFilter] = useState<FilterOption>('all');
-  const [showAddExpense, setShowAddExpense] = useState(false);
-  const [showAddCategory, setShowAddCategory] = useState(false);
-  const [editingCategory, setEditingCategory] = useState<Category | undefined>();
-  const [resetCategory, setResetCategory] = useState<Category | undefined>();
-  const [showResetModal, setShowResetModal] = useState(false);
-  const [selectedExpenseCategory, setSelectedExpenseCategory] = useState<string | undefined>();
   const [showSort, setShowSort] = useState(false);
 
-  // Derived from the expenses themselves, so the totals follow every change.
-  const spentByCategory = useMemo(() => getSpentByCategory(categories, expenses), [categories, expenses]);
-  const totalBudget = useMemo(() => categories.reduce((s, c) => s + c.budget, 0), [categories]);
-  const totalSpent = useMemo(() => categories.reduce((s, c) => s + (spentByCategory.get(c.id) ?? 0), 0), [categories, spentByCategory]);
-  const totalRemaining = totalBudget - totalSpent;
+  const visible = useMemo(() => {
+    const list = rows.filter(row => matchesFilter(row, filter)).sort((a, b) => compare(a, b, sort));
+    return [...list.filter(r => r.category.pinned), ...list.filter(r => !r.category.pinned)];
+  }, [rows, filter, sort]);
 
-  const filteredAndSorted = useMemo(() => {
-    let list = [...categories];
+  const hasCategories = rows.length > 0;
+  const isOver = totals.remaining < 0;
 
-    if (search.trim()) {
-      const q = search.toLowerCase();
-      list = list.filter(c => c.name.toLowerCase().includes(q));
+  const addExpense = (categoryId?: string) => {
+    pressFeedback();
+    router.push({ pathname: '/expense-form', params: categoryId ? { categoryId } : {} });
+  };
+
+  const askDelete = async (row: CategoryMonth) => {
+    const count = useBudgetStore.getState().expenses.filter(e => e.categoryId === row.category.id).length;
+    const ok = await confirm(
+      `Delete ${row.category.name}?`,
+      count > 0
+        ? `Its ${count} expense${count === 1 ? '' : 's'} will be deleted too. This can't be undone.`
+        : "This can't be undone.",
+      'Delete',
+      true,
+    );
+    if (ok) {
+      warningFeedback();
+      deleteCategory(row.category.id);
     }
-
-    list = list.filter(c => {
-      const spent = spentByCategory.get(c.id) ?? 0;
-      const remaining = c.budget - spent;
-      switch (filter) {
-        case 'overspent': return remaining < 0;
-        case 'under_budget': return remaining >= 0 && spent > 0;
-        case 'no_expenses': return spent === 0;
-        default: return true;
-      }
-    });
-
-    list.sort((a, b) => {
-      const spentA = spentByCategory.get(a.id) ?? 0;
-      const spentB = spentByCategory.get(b.id) ?? 0;
-      switch (sort) {
-        case 'name': return a.name.localeCompare(b.name);
-        case 'remaining': return (a.budget - spentA) - (b.budget - spentB);
-        case 'spent': return spentB - spentA;
-        case 'budget': return b.budget - a.budget;
-        case 'activity': {
-          const dA = getLastExpenseDateFor(a.id, expenses) ?? a.createdAt;
-          const dB = getLastExpenseDateFor(b.id, expenses) ?? b.createdAt;
-          return new Date(dB).getTime() - new Date(dA).getTime();
-        }
-        case 'overspent': return (a.budget - spentA) - (b.budget - spentB);
-        default: return 0;
-      }
-    });
-
-    const pinned = list.filter(c => c.pinned);
-    const unpinned = list.filter(c => !c.pinned);
-    return [...pinned, ...unpinned];
-  }, [categories, expenses, search, sort, filter, spentByCategory]);
-
-  const topPad = isWeb ? 67 : insets.top;
-  const bottomPad = isWeb ? 34 : insets.bottom;
+  };
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.header, { paddingTop: topPad + 12, backgroundColor: colors.card, borderBottomColor: colors.border }]}>
+      <View style={[styles.header, { paddingTop: insets.top + 12, backgroundColor: colors.card, borderBottomColor: colors.border }]}>
         <View style={styles.headerTop}>
           <Text style={[styles.appTitle, { color: colors.foreground }]}>Budget</Text>
-          <TouchableOpacity
-            style={[styles.sortBtn, { backgroundColor: colors.muted }]}
-            onPress={() => { Haptics.selectionAsync(); setShowSort(!showSort); }}
-          >
-            <Feather name="sliders" size={15} color={colors.mutedForeground} />
-            <Text style={[styles.sortBtnText, { color: colors.mutedForeground }]}>
-              {SORT_OPTIONS.find(o => o.key === sort)?.label}
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        <View style={[styles.summaryRow]}>
-          <View style={styles.summaryItem}>
-            <Text style={[styles.summaryLabel, { color: colors.mutedForeground }]}>Budget</Text>
-            <Text style={[styles.summaryValue, { color: colors.foreground }]}>
-              {currency} {totalBudget.toFixed(0)}
-            </Text>
-          </View>
-          <View style={[styles.summaryDivider, { backgroundColor: colors.border }]} />
-          <View style={styles.summaryItem} testID="summary-spent">
-            <Text style={[styles.summaryLabel, { color: colors.mutedForeground }]}>Spent</Text>
-            <Text style={[styles.summaryValue, { color: colors.foreground }]}>
-              {currency} {totalSpent.toFixed(0)}
-            </Text>
-          </View>
-          <View style={[styles.summaryDivider, { backgroundColor: colors.border }]} />
-          <View style={styles.summaryItem} testID="summary-remaining">
-            <Text style={[styles.summaryLabel, { color: colors.mutedForeground }]}>Remaining</Text>
-            <Text style={[styles.summaryValue, { color: totalRemaining < 0 ? colors.destructive : colors.success }]}>
-              {totalRemaining < 0 ? '−' : ''}{currency} {Math.abs(totalRemaining).toFixed(0)}
-            </Text>
-          </View>
-        </View>
-
-        <View style={[styles.searchBar, { backgroundColor: colors.muted, borderColor: colors.border }]}>
-          <Feather name="search" size={16} color={colors.mutedForeground} />
-          <TextInput
-            style={[styles.searchInput, { color: colors.foreground }]}
-            placeholder="Search categories..."
-            placeholderTextColor={colors.mutedForeground}
-            value={search}
-            onChangeText={setSearch}
-            returnKeyType="search"
-          />
-          {search.length > 0 && (
-            <TouchableOpacity onPress={() => setSearch('')}>
-              <Feather name="x" size={16} color={colors.mutedForeground} />
-            </TouchableOpacity>
-          )}
-        </View>
-
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.filterRow}
-        >
-          {FILTER_OPTIONS.map(opt => (
-            <TouchableOpacity
-              key={opt.key}
-              style={[
-                styles.filterChip,
-                {
-                  backgroundColor: filter === opt.key ? colors.primary : colors.muted,
-                  borderColor: filter === opt.key ? colors.primary : colors.border,
-                },
-              ]}
-              onPress={() => { Haptics.selectionAsync(); setFilter(opt.key); }}
-            >
-              <Text
-                style={[
-                  styles.filterChipText,
-                  { color: filter === opt.key ? colors.primaryForeground : colors.mutedForeground },
-                ]}
+          <View style={styles.headerActions}>
+            {hasCategories ? (
+              <TouchableOpacity
+                testID="sort-button"
+                accessibilityRole="button"
+                accessibilityLabel={`Sort: ${SORT_OPTIONS.find(o => o.key === sort)?.label}`}
+                style={[styles.pill, { backgroundColor: colors.muted }]}
+                onPress={() => {
+                  tapFeedback();
+                  setShowSort(!showSort);
+                }}
               >
-                {opt.label}
-              </Text>
+                <Feather name="sliders" size={14} color={colors.mutedForeground} />
+                <Text style={[styles.pillText, { color: colors.mutedForeground }]}>{SORT_OPTIONS.find(o => o.key === sort)?.label}</Text>
+              </TouchableOpacity>
+            ) : null}
+            <TouchableOpacity
+              testID="add-category"
+              accessibilityRole="button"
+              accessibilityLabel="New category"
+              style={[styles.pill, { backgroundColor: colors.accent }]}
+              onPress={() => router.push('/category-form')}
+            >
+              <Feather name="plus" size={14} color={colors.accentForeground} />
+              <Text style={[styles.pillText, { color: colors.accentForeground }]}>Category</Text>
             </TouchableOpacity>
-          ))}
-        </ScrollView>
+          </View>
+        </View>
+
+        <PeriodSwitcher period={period} current={current} startDay={startDay} onChange={setPeriod} />
+
+        <View style={styles.summaryRow}>
+          <AmountCell testID="summary-budget" label="Budget" minor={totals.budget} currency={currency} />
+          <View style={[styles.summaryDivider, { backgroundColor: colors.border }]} />
+          <AmountCell testID="summary-spent" label="Spent" minor={totals.spent} currency={currency} />
+          <View style={[styles.summaryDivider, { backgroundColor: colors.border }]} />
+          <AmountCell
+            testID="summary-remaining"
+            label={isOver ? 'Over by' : 'Left'}
+            minor={totals.remaining}
+            currency={currency}
+            color={isOver ? colors.destructive : colors.success}
+          />
+        </View>
+
+        {hasCategories ? (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
+            {FILTER_OPTIONS.map(opt => (
+              <TouchableOpacity
+                key={opt.key}
+                testID={`filter-${opt.key}`}
+                accessibilityRole="button"
+                accessibilityState={{ selected: filter === opt.key }}
+                style={[
+                  styles.filterChip,
+                  {
+                    backgroundColor: filter === opt.key ? colors.primary : colors.muted,
+                    borderColor: filter === opt.key ? colors.primary : colors.border,
+                  },
+                ]}
+                onPress={() => {
+                  tapFeedback();
+                  setFilter(opt.key);
+                }}
+              >
+                <Text style={[styles.filterChipText, { color: filter === opt.key ? colors.primaryForeground : colors.mutedForeground }]}>
+                  {opt.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        ) : (
+          <View style={{ height: 12 }} />
+        )}
       </View>
 
-      {showSort && (
-        <View style={[styles.sortMenu, { backgroundColor: colors.card, borderColor: colors.border, top: isWeb ? 67 : insets.top }]}>
-          <Text style={[styles.sortMenuTitle, { color: colors.mutedForeground }]}>SORT BY</Text>
-          {SORT_OPTIONS.map(opt => (
-            <TouchableOpacity
-              key={opt.key}
-              style={[styles.sortMenuItem, { borderBottomColor: colors.border }]}
-              onPress={() => { Haptics.selectionAsync(); setSort(opt.key); setShowSort(false); }}
-            >
-              <Text style={[styles.sortMenuItemText, { color: colors.foreground }]}>{opt.label}</Text>
-              {sort === opt.key && <Feather name="check" size={16} color={colors.primary} />}
-            </TouchableOpacity>
-          ))}
-        </View>
-      )}
+      {showSort ? (
+        <>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowSort(false)} />
+          <View style={[styles.sortMenu, { backgroundColor: colors.card, borderColor: colors.border, top: insets.top + 56 }]}>
+            <Text style={[styles.sortMenuTitle, { color: colors.mutedForeground }]}>SORT BY</Text>
+            {SORT_OPTIONS.map(opt => (
+              <TouchableOpacity
+                key={opt.key}
+                testID={`sort-${opt.key}`}
+                style={[styles.sortMenuItem, { borderBottomColor: colors.border }]}
+                onPress={() => {
+                  tapFeedback();
+                  setSort(opt.key);
+                  setShowSort(false);
+                }}
+              >
+                <Text style={[styles.sortMenuItemText, { color: colors.foreground }]}>{opt.label}</Text>
+                {sort === opt.key ? <Feather name="check" size={16} color={colors.primary} /> : null}
+              </TouchableOpacity>
+            ))}
+          </View>
+        </>
+      ) : null}
 
       <FlatList
-        data={filteredAndSorted}
-        keyExtractor={item => item.id}
+        data={visible}
+        keyExtractor={row => row.category.id}
         renderItem={({ item }) => (
           <CategoryCard
-            category={item}
-            onAddExpense={cat => {
-              setSelectedExpenseCategory(cat.id);
-              setShowAddExpense(true);
-            }}
-            onEdit={cat => {
-              setEditingCategory(cat);
-              setShowAddCategory(true);
-            }}
-            onReset={cat => {
-              setResetCategory(cat);
-              setShowResetModal(true);
-            }}
+            row={item}
+            currency={currency}
+            onOpen={() => router.push({ pathname: '/category/[id]', params: { id: item.category.id } })}
+            onAddExpense={() => addExpense(item.category.id)}
+            onEdit={() => router.push({ pathname: '/category-form', params: { id: item.category.id } })}
+            onTogglePin={() => togglePin(item.category.id)}
+            onDelete={() => void askDelete(item)}
           />
         )}
-        contentContainerStyle={[
-          styles.listContent,
-          { paddingBottom: bottomPad + 100 },
-        ]}
+        contentContainerStyle={[styles.listContent, { paddingBottom: 96 }]}
         ListEmptyComponent={
-          <EmptyState
-            icon="credit-card"
-            title={search ? 'No results' : 'No categories yet'}
-            description={
-              search
-                ? 'Try a different search'
-                : 'Create a budget category to start tracking your spending'
-            }
-            actionLabel={search ? undefined : 'Create Category'}
-            onAction={search ? undefined : () => setShowAddCategory(true)}
-          />
+          hasCategories ? (
+            <EmptyState icon="filter" title="Nothing here" description="No category matches this filter." />
+          ) : (
+            <EmptyState
+              icon="credit-card"
+              title="No categories yet"
+              description="Make a category for each kind of spending, like groceries or fuel, and give it a monthly budget."
+              actionLabel="Create a category"
+              onAction={() => router.push('/category-form')}
+            />
+          )
         }
         showsVerticalScrollIndicator={false}
       />
 
-      <TouchableOpacity
-        style={[styles.fab, { backgroundColor: colors.primary, bottom: 20 }]}
-        onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); setShowAddCategory(true); }}
-        activeOpacity={0.85}
-      >
-        <Feather name="plus" size={24} color="#fff" />
-      </TouchableOpacity>
-
-      <AddExpenseModal
-        visible={showAddExpense}
-        onClose={() => { setShowAddExpense(false); setSelectedExpenseCategory(undefined); }}
-        initialCategoryId={selectedExpenseCategory}
-      />
-      <AddCategoryModal
-        visible={showAddCategory}
-        onClose={() => { setShowAddCategory(false); setEditingCategory(undefined); }}
-        editingCategory={editingCategory}
-      />
-      <ResetModal
-        visible={showResetModal}
-        onClose={() => { setShowResetModal(false); setResetCategory(undefined); }}
-        category={resetCategory}
-      />
+      {hasCategories ? (
+        <TouchableOpacity
+          testID="add-expense"
+          accessibilityRole="button"
+          accessibilityLabel="Add an expense"
+          style={[styles.fab, { backgroundColor: colors.primary }]}
+          onPress={() => addExpense()}
+          activeOpacity={0.85}
+        >
+          <Feather name="plus" size={22} color="#fff" />
+          <Text style={styles.fabText}>Expense</Text>
+        </TouchableOpacity>
+      ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
+  container: { flex: 1 },
   header: {
     paddingHorizontal: 16,
-    paddingBottom: 0,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 2,
+    gap: 14,
     zIndex: 10,
   },
-  headerTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 16,
-  },
-  appTitle: {
-    fontSize: 28,
-    fontFamily: 'Inter_700Bold',
-  },
-  sortBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 20,
-  },
-  sortBtnText: {
-    fontSize: 13,
-    fontFamily: 'Inter_500Medium',
-  },
-  summaryRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 14,
-  },
-  summaryItem: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  summaryLabel: {
-    fontSize: 11,
-    fontFamily: 'Inter_400Regular',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 2,
-  },
-  summaryValue: {
-    fontSize: 16,
-    fontFamily: 'Inter_700Bold',
-  },
-  summaryDivider: {
-    width: 1,
-    height: 32,
-  },
-  searchBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 10,
-    borderWidth: StyleSheet.hairlineWidth,
-    marginBottom: 10,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 15,
-    fontFamily: 'Inter_400Regular',
-  },
-  filterRow: {
-    flexDirection: 'row',
-    gap: 8,
-    paddingBottom: 12,
-    paddingRight: 4,
-  },
-  filterChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 20,
-    borderWidth: 1,
-  },
-  filterChipText: {
-    fontSize: 13,
-    fontFamily: 'Inter_500Medium',
-  },
-  listContent: {
-    paddingTop: 10,
-  },
+  headerTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  appTitle: { fontSize: 28, fontFamily: 'Inter_700Bold' },
+  pill: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20 },
+  pillText: { fontSize: 13, fontFamily: 'Inter_500Medium' },
+  summaryRow: { flexDirection: 'row', alignItems: 'center' },
+  summaryDivider: { width: 1, height: 32 },
+  filterRow: { flexDirection: 'row', gap: 8, paddingBottom: 12, paddingRight: 4 },
+  filterChip: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 20, borderWidth: 1 },
+  filterChipText: { fontSize: 13, fontFamily: 'Inter_500Medium' },
+  listContent: { paddingTop: 12, flexGrow: 1 },
   fab: {
     position: 'absolute',
     right: 20,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    bottom: 20,
+    height: 52,
+    paddingHorizontal: 20,
+    borderRadius: 26,
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: 6,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
     shadowRadius: 8,
-    elevation: 8,
+    elevation: 6,
   },
+  fabText: { color: '#fff', fontSize: 15, fontFamily: 'Inter_600SemiBold' },
   sortMenu: {
     position: 'absolute',
     right: 16,
@@ -401,13 +305,7 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     overflow: 'hidden',
   },
-  sortMenuTitle: {
-    fontSize: 10,
-    fontFamily: 'Inter_600SemiBold',
-    letterSpacing: 0.8,
-    paddingHorizontal: 16,
-    paddingBottom: 8,
-  },
+  sortMenuTitle: { fontSize: 10, fontFamily: 'Inter_600SemiBold', letterSpacing: 0.8, paddingHorizontal: 16, paddingBottom: 8 },
   sortMenuItem: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -416,8 +314,5 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  sortMenuItemText: {
-    fontSize: 15,
-    fontFamily: 'Inter_500Medium',
-  },
+  sortMenuItemText: { fontSize: 15, fontFamily: 'Inter_500Medium' },
 });

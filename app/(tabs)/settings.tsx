@@ -1,468 +1,250 @@
-import React, { useState } from 'react';
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  StyleSheet,
-  ScrollView,
-  Alert,
-  Modal,
-  TextInput,
-  Pressable,
-  Share,
-  Platform,
-} from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import Constants from 'expo-constants';
+import React, { useState } from 'react';
+import { Modal, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import * as Haptics from 'expo-haptics';
+
 import { useColors } from '@/hooks/useColors';
 import { useBudgetStore } from '@/store/budgetStore';
-import ResetModal from '@/components/ResetModal';
-import { CURRENCY_OPTIONS } from '@/types';
 import type { ThemeOption } from '@/types';
+import { changeCurrency } from '@/utils/budget';
+import { confirm, notify } from '@/utils/confirm';
+import { tapFeedback, warningFeedback } from '@/utils/haptics';
+import { CURRENCIES } from '@/utils/money';
 
-const THEMES: { key: ThemeOption; label: string; icon: string }[] = [
+const THEMES: { key: ThemeOption; label: string; icon: 'monitor' | 'sun' | 'moon' }[] = [
   { key: 'system', label: 'System', icon: 'monitor' },
   { key: 'light', label: 'Light', icon: 'sun' },
   { key: 'dark', label: 'Dark', icon: 'moon' },
 ];
 
-interface SettingRowProps {
-  icon: string;
+function ordinal(day: number): string {
+  if (day >= 11 && day <= 13) return `${day}th`;
+  return `${day}${['th', 'st', 'nd', 'rd'][day % 10] ?? 'th'}`;
+}
+
+interface RowProps {
+  icon: React.ComponentProps<typeof Feather>['name'];
   label: string;
   value?: string;
   onPress?: () => void;
   destructive?: boolean;
-  colors: Record<string, string> & { radius: number; isDark: boolean };
-  showChevron?: boolean;
+  testID?: string;
 }
 
-function SettingRow({ icon, label, value, onPress, destructive, colors, showChevron = true }: SettingRowProps) {
+function SettingRow({ icon, label, value, onPress, destructive, testID }: RowProps) {
+  const colors = useColors();
   return (
     <TouchableOpacity
-      style={[styles.settingRow, { borderBottomColor: colors.border }]}
+      testID={testID}
+      accessibilityRole="button"
+      style={[styles.row, { borderBottomColor: colors.border }]}
       onPress={onPress}
-      activeOpacity={onPress ? 0.7 : 1}
       disabled={!onPress}
+      activeOpacity={0.7}
     >
-      <View style={[styles.settingIcon, { backgroundColor: destructive ? colors.dangerLight : colors.muted }]}>
-        <Feather name={icon as any} size={16} color={destructive ? colors.destructive : colors.mutedForeground} />
+      <View style={[styles.rowIcon, { backgroundColor: destructive ? colors.dangerLight : colors.muted }]}>
+        <Feather name={icon} size={16} color={destructive ? colors.destructive : colors.mutedForeground} />
       </View>
-      <Text style={[styles.settingLabel, { color: destructive ? colors.destructive : colors.foreground }]}>
-        {label}
-      </Text>
-      <View style={styles.settingRight}>
-        {value ? <Text style={[styles.settingValue, { color: colors.mutedForeground }]}>{value}</Text> : null}
-        {showChevron && onPress ? <Feather name="chevron-right" size={16} color={colors.mutedForeground} /> : null}
-      </View>
+      <Text style={[styles.rowLabel, { color: destructive ? colors.destructive : colors.foreground }]}>{label}</Text>
+      {value ? <Text style={[styles.rowValue, { color: colors.mutedForeground }]}>{value}</Text> : null}
+      {onPress ? <Feather name="chevron-right" size={16} color={colors.mutedForeground} /> : null}
     </TouchableOpacity>
   );
 }
 
-export default function Settings() {
+export default function SettingsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const isWeb = Platform.OS === 'web';
-
   const theme = useBudgetStore(s => s.theme);
   const currency = useBudgetStore(s => s.currency);
+  const startDay = useBudgetStore(s => s.periodStartDay);
+  const categoryCount = useBudgetStore(s => s.categories.length);
+  const expenseCount = useBudgetStore(s => s.expenses.length);
   const setTheme = useBudgetStore(s => s.setTheme);
   const setCurrency = useBudgetStore(s => s.setCurrency);
-  const exportData = useBudgetStore(s => s.exportData);
-  const importData = useBudgetStore(s => s.importData);
-  const categories = useBudgetStore(s => s.categories);
-  const expenses = useBudgetStore(s => s.expenses);
+  const setPeriodStartDay = useBudgetStore(s => s.setPeriodStartDay);
+  const clearData = useBudgetStore(s => s.clearData);
+  const [showCurrencies, setShowCurrencies] = useState(false);
 
-  const [showCurrencyPicker, setShowCurrencyPicker] = useState(false);
-  const [showImportModal, setShowImportModal] = useState(false);
-  const [importText, setImportText] = useState('');
-  const [showResetAll, setShowResetAll] = useState(false);
-
-  const topPad = isWeb ? 67 : insets.top;
-  const bottomPad = isWeb ? 34 : insets.bottom;
-
-  const handleExport = async () => {
-    const json = exportData();
-    if (Platform.OS === 'web') {
-      Alert.alert('Export Data', 'Copy the JSON from the console (web export).\n\n' + json.substring(0, 200) + '...');
-      return;
+  const chooseCurrency = async (code: string) => {
+    setShowCurrencies(false);
+    if (code === currency) return;
+    const state = useBudgetStore.getState();
+    const hasAmounts = state.expenses.length > 0 || state.categories.length > 0;
+    if (hasAmounts) {
+      const { inexact } = changeCurrency(state, code);
+      const ok = await confirm(
+        `Switch to ${code}?`,
+        `Amounts keep their numbers: 12.5 ${currency} becomes 12.5 ${code}. Nothing is converted at an exchange rate.` +
+          (inexact > 0 ? `\n\n${inexact} amount${inexact === 1 ? ' has' : 's have'} more decimals than ${code} uses and will be rounded.` : ''),
+        'Switch',
+      );
+      if (!ok) return;
     }
-    try {
-      await Share.share({ message: json, title: 'Budget Data Export' });
-    } catch {
-      Alert.alert('Export failed', 'Could not export data');
-    }
+    tapFeedback();
+    setCurrency(code);
   };
 
-  const handleExportCSV = () => {
-    const headers = 'Category,Amount,Merchant,Notes,Tags,Date\n';
-    const rows = expenses
-      .map(e => {
-        const cat = categories.find(c => c.id === e.categoryId);
-        return `"${cat?.name ?? ''}",${e.amount},"${e.merchant}","${e.notes}","${e.tags.join(';')}",${e.date}`;
-      })
-      .join('\n');
-    const csv = headers + rows;
-    if (Platform.OS === 'web') {
-      Alert.alert('Export CSV', 'CSV data ready.\n\n' + csv.substring(0, 200));
-      return;
-    }
-    Share.share({ message: csv, title: 'Budget Expenses CSV' }).catch(() => {
-      Alert.alert('Export failed', 'Could not export CSV');
-    });
-  };
-
-  const handleImport = () => {
-    const success = importData(importText.trim());
-    if (success) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      setShowImportModal(false);
-      setImportText('');
-      Alert.alert('Import Successful', 'Your data has been imported.');
-    } else {
-      Alert.alert('Import Failed', 'Invalid data format. Please paste valid JSON exported from this app.');
-    }
-  };
-
-  const handleClearAll = () => {
-    Alert.alert(
-      'Clear All Data',
-      'This will permanently delete all categories, expenses, and history. This cannot be undone.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Clear Everything',
-          style: 'destructive',
-          onPress: () => {
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-            useBudgetStore.setState({ categories: [], expenses: [], events: [] });
-          },
-        },
-      ]
+  const clearAll = async () => {
+    const ok = await confirm(
+      'Delete all data?',
+      `This deletes ${categoryCount} categories and ${expenseCount} expenses from this phone. This can't be undone.`,
+      'Delete everything',
+      true,
     );
+    if (!ok) return;
+    warningFeedback();
+    clearData();
+    notify('Deleted', 'All categories and expenses are gone.');
   };
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.header, { paddingTop: topPad + 12, backgroundColor: colors.card, borderBottomColor: colors.border }]}>
+      <View style={[styles.header, { paddingTop: insets.top + 12, backgroundColor: colors.card, borderBottomColor: colors.border }]}>
         <Text style={[styles.title, { color: colors.foreground }]}>Settings</Text>
       </View>
 
-      <ScrollView
-        contentContainerStyle={[styles.content, { paddingBottom: bottomPad + 80 }]}
-        showsVerticalScrollIndicator={false}
-      >
-        <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>APPEARANCE</Text>
-        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <View style={styles.themeRow}>
-            {THEMES.map(t => (
+      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: 32 }]} showsVerticalScrollIndicator={false}>
+        <Text style={[styles.section, { color: colors.mutedForeground }]}>APPEARANCE</Text>
+        <View style={[styles.card, styles.themeRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          {THEMES.map(t => {
+            const selected = theme === t.key;
+            return (
               <TouchableOpacity
                 key={t.key}
-                style={[
-                  styles.themeOption,
-                  {
-                    backgroundColor: theme === t.key ? colors.primary : colors.muted,
-                    borderColor: theme === t.key ? colors.primary : 'transparent',
-                  },
-                ]}
-                onPress={() => { Haptics.selectionAsync(); setTheme(t.key); }}
+                testID={`theme-${t.key}`}
+                accessibilityRole="button"
+                accessibilityState={{ selected }}
+                style={[styles.themeOption, { backgroundColor: selected ? colors.primary : colors.muted }]}
+                onPress={() => {
+                  tapFeedback();
+                  setTheme(t.key);
+                }}
               >
-                <Feather
-                  name={t.icon as any}
-                  size={16}
-                  color={theme === t.key ? colors.primaryForeground : colors.mutedForeground}
-                />
-                <Text
-                  style={[
-                    styles.themeLabel,
-                    { color: theme === t.key ? colors.primaryForeground : colors.mutedForeground },
-                  ]}
-                >
-                  {t.label}
-                </Text>
+                <Feather name={t.icon} size={16} color={selected ? colors.primaryForeground : colors.mutedForeground} />
+                <Text style={[styles.themeLabel, { color: selected ? colors.primaryForeground : colors.mutedForeground }]}>{t.label}</Text>
               </TouchableOpacity>
-            ))}
+            );
+          })}
+        </View>
+
+        <Text style={[styles.section, { color: colors.mutedForeground }]}>BUDGET</Text>
+        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <SettingRow testID="currency-row" icon="dollar-sign" label="Currency" value={currency} onPress={() => setShowCurrencies(true)} />
+          <View style={[styles.row, { borderBottomColor: colors.border }]}>
+            <View style={[styles.rowIcon, { backgroundColor: colors.muted }]}>
+              <Feather name="calendar" size={16} color={colors.mutedForeground} />
+            </View>
+            <View style={styles.stepperText}>
+              <Text style={[styles.rowLabel, { color: colors.foreground }]}>Months start on the</Text>
+              <Text style={[styles.rowHint, { color: colors.mutedForeground }]}>Pick your payday to budget pay to pay</Text>
+            </View>
+            <View style={styles.stepper}>
+              <TouchableOpacity
+                testID="start-day-down"
+                accessibilityRole="button"
+                accessibilityLabel="Earlier start day"
+                disabled={startDay <= 1}
+                onPress={() => setPeriodStartDay(startDay - 1)}
+                style={[styles.stepButton, { backgroundColor: colors.muted, opacity: startDay <= 1 ? 0.4 : 1 }]}
+              >
+                <Feather name="minus" size={14} color={colors.foreground} />
+              </TouchableOpacity>
+              <Text testID="start-day" style={[styles.stepValue, { color: colors.foreground }]}>
+                {ordinal(startDay)}
+              </Text>
+              <TouchableOpacity
+                testID="start-day-up"
+                accessibilityRole="button"
+                accessibilityLabel="Later start day"
+                disabled={startDay >= 31}
+                onPress={() => setPeriodStartDay(startDay + 1)}
+                style={[styles.stepButton, { backgroundColor: colors.muted, opacity: startDay >= 31 ? 0.4 : 1 }]}
+              >
+                <Feather name="plus" size={14} color={colors.foreground} />
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
+        {startDay > 28 ? (
+          <Text style={[styles.note, { color: colors.mutedForeground }]}>In shorter months the month starts on their last day.</Text>
+        ) : null}
 
-        <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>CURRENCY</Text>
+        <Text style={[styles.section, { color: colors.mutedForeground }]}>DATA</Text>
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <SettingRow
-            icon="dollar-sign"
-            label="Currency"
-            value={currency}
-            onPress={() => setShowCurrencyPicker(true)}
-            colors={colors as unknown as Record<string, string> & { radius: number; isDark: boolean }}
-          />
+          <SettingRow testID="clear-all" icon="trash-2" label="Delete all data" destructive onPress={() => void clearAll()} />
         </View>
 
-        <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>DATA</Text>
-        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <SettingRow
-            icon="download"
-            label="Export as JSON"
-            onPress={handleExport}
-            colors={colors as unknown as Record<string, string> & { radius: number; isDark: boolean }}
-          />
-          <SettingRow
-            icon="file-text"
-            label="Export as CSV"
-            onPress={handleExportCSV}
-            colors={colors as unknown as Record<string, string> & { radius: number; isDark: boolean }}
-          />
-          <SettingRow
-            icon="upload"
-            label="Import JSON"
-            onPress={() => setShowImportModal(true)}
-            colors={colors as unknown as Record<string, string> & { radius: number; isDark: boolean }}
-            showChevron={false}
-          />
-        </View>
-
-        <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>CYCLES</Text>
-        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <SettingRow
-            icon="refresh-cw"
-            label="Reset All Categories"
-            onPress={() => setShowResetAll(true)}
-            colors={colors as unknown as Record<string, string> & { radius: number; isDark: boolean }}
-          />
-        </View>
-
-        <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>DANGER ZONE</Text>
-        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <SettingRow
-            icon="trash-2"
-            label="Clear All Data"
-            onPress={handleClearAll}
-            destructive
-            colors={colors as unknown as Record<string, string> & { radius: number; isDark: boolean }}
-          />
-        </View>
-
-        <View style={[styles.appInfo, { borderColor: colors.border }]}>
-          <Text style={[styles.appName, { color: colors.foreground }]}>Budget Tracker</Text>
-          <Text style={[styles.appVersion, { color: colors.mutedForeground }]}>
-            {categories.length} categories · {expenses.length} expenses
+        <View style={styles.about}>
+          <Text style={[styles.appName, { color: colors.foreground }]}>Budget Tracker {Constants.expoConfig?.version ?? ''}</Text>
+          <Text style={[styles.aboutText, { color: colors.mutedForeground }]}>
+            {categoryCount} categories · {expenseCount} expenses
+          </Text>
+          <Text style={[styles.aboutText, { color: colors.mutedForeground }]}>
+            Everything stays on this phone. There is no account, and the app sends nothing anywhere.
           </Text>
         </View>
       </ScrollView>
 
-      <Modal visible={showCurrencyPicker} animationType="slide" transparent onRequestClose={() => setShowCurrencyPicker(false)}>
-        <Pressable style={styles.modalOverlay} onPress={() => setShowCurrencyPicker(false)}>
-          <View style={[styles.pickerSheet, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <View style={[styles.handle, { backgroundColor: colors.border }]} />
-            <Text style={[styles.pickerTitle, { color: colors.foreground }]}>Select Currency</Text>
+      <Modal visible={showCurrencies} animationType="fade" transparent onRequestClose={() => setShowCurrencies(false)}>
+        <Pressable style={styles.overlay} onPress={() => setShowCurrencies(false)}>
+          <View style={[styles.sheet, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.sheetTitle, { color: colors.foreground }]}>Currency</Text>
             <ScrollView>
-              {CURRENCY_OPTIONS.map(c => (
+              {CURRENCIES.map(c => (
                 <TouchableOpacity
-                  key={c}
-                  style={[styles.pickerItem, { borderBottomColor: colors.border }, c === currency && { backgroundColor: colors.accent }]}
-                  onPress={() => { Haptics.selectionAsync(); setCurrency(c); setShowCurrencyPicker(false); }}
+                  key={c.code}
+                  testID={`currency-${c.code}`}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: c.code === currency }}
+                  style={[styles.sheetItem, { borderBottomColor: colors.border }, c.code === currency && { backgroundColor: colors.accent }]}
+                  onPress={() => void chooseCurrency(c.code)}
                 >
-                  <Text style={[styles.pickerItemText, { color: colors.foreground }]}>{c}</Text>
-                  {c === currency && <Feather name="check" size={18} color={colors.primary} />}
+                  <View>
+                    <Text style={[styles.sheetCode, { color: colors.foreground }]}>{c.code}</Text>
+                    <Text style={[styles.sheetName, { color: colors.mutedForeground }]}>
+                      {c.name} · {c.decimals} decimals
+                    </Text>
+                  </View>
+                  {c.code === currency ? <Feather name="check" size={18} color={colors.primary} /> : null}
                 </TouchableOpacity>
               ))}
             </ScrollView>
           </View>
         </Pressable>
       </Modal>
-
-      <Modal visible={showImportModal} animationType="slide" transparent onRequestClose={() => setShowImportModal(false)}>
-        <Pressable style={styles.modalOverlay} onPress={() => setShowImportModal(false)}>
-          <Pressable>
-            <View style={[styles.importSheet, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <View style={[styles.handle, { backgroundColor: colors.border }]} />
-              <Text style={[styles.pickerTitle, { color: colors.foreground }]}>Import JSON</Text>
-              <Text style={[styles.importHint, { color: colors.mutedForeground }]}>
-                Paste the JSON data exported from this app.
-              </Text>
-              <TextInput
-                style={[styles.importInput, { borderColor: colors.border, backgroundColor: colors.background, color: colors.foreground }]}
-                multiline
-                numberOfLines={8}
-                placeholder='{"version": 1, "categories": [...], ...}'
-                placeholderTextColor={colors.mutedForeground}
-                value={importText}
-                onChangeText={setImportText}
-                textAlignVertical="top"
-              />
-              <TouchableOpacity
-                style={[styles.importBtn, { backgroundColor: colors.primary }]}
-                onPress={handleImport}
-                activeOpacity={0.85}
-              >
-                <Text style={[styles.importBtnText, { color: colors.primaryForeground }]}>Import Data</Text>
-              </TouchableOpacity>
-            </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
-
-      <ResetModal
-        visible={showResetAll}
-        onClose={() => setShowResetAll(false)}
-      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: {
-    paddingHorizontal: 16,
-    paddingBottom: 16,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  title: {
-    fontSize: 28,
-    fontFamily: 'Inter_700Bold',
-  },
-  content: {
-    padding: 16,
-  },
-  sectionTitle: {
-    fontSize: 11,
-    fontFamily: 'Inter_600SemiBold',
-    letterSpacing: 0.8,
-    marginTop: 20,
-    marginBottom: 8,
-    paddingHorizontal: 2,
-  },
-  card: {
-    borderRadius: 16,
-    borderWidth: StyleSheet.hairlineWidth,
-    overflow: 'hidden',
-  },
-  themeRow: {
-    flexDirection: 'row',
-    gap: 8,
-    padding: 14,
-  },
-  themeOption: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 10,
-    borderRadius: 10,
-    borderWidth: 1.5,
-  },
-  themeLabel: {
-    fontSize: 13,
-    fontFamily: 'Inter_600SemiBold',
-  },
-  settingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  settingIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  settingLabel: {
-    flex: 1,
-    fontSize: 15,
-    fontFamily: 'Inter_500Medium',
-  },
-  settingRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  settingValue: {
-    fontSize: 14,
-    fontFamily: 'Inter_500Medium',
-  },
-  appInfo: {
-    alignItems: 'center',
-    padding: 24,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    marginTop: 24,
-  },
-  appName: {
-    fontSize: 16,
-    fontFamily: 'Inter_600SemiBold',
-  },
-  appVersion: {
-    fontSize: 13,
-    fontFamily: 'Inter_400Regular',
-    marginTop: 4,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'flex-end',
-  },
-  pickerSheet: {
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    borderWidth: StyleSheet.hairlineWidth,
-    paddingTop: 12,
-    paddingHorizontal: 20,
-    maxHeight: 480,
-  },
-  handle: {
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    alignSelf: 'center',
-    marginBottom: 16,
-  },
-  pickerTitle: {
-    fontSize: 18,
-    fontFamily: 'Inter_700Bold',
-    marginBottom: 16,
-  },
-  pickerItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 14,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: 4,
-  },
-  pickerItemText: {
-    fontSize: 15,
-    fontFamily: 'Inter_500Medium',
-  },
-  importSheet: {
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    borderWidth: StyleSheet.hairlineWidth,
-    padding: 20,
-    paddingTop: 12,
-  },
-  importHint: {
-    fontSize: 13,
-    fontFamily: 'Inter_400Regular',
-    marginBottom: 12,
-  },
-  importInput: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 10,
-    padding: 12,
-    fontFamily: 'Inter_400Regular',
-    fontSize: 13,
-    height: 160,
-    marginBottom: 16,
-  },
-  importBtn: {
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  importBtnText: {
-    fontSize: 15,
-    fontFamily: 'Inter_700Bold',
-  },
+  header: { paddingHorizontal: 16, paddingBottom: 16, borderBottomWidth: StyleSheet.hairlineWidth },
+  title: { fontSize: 28, fontFamily: 'Inter_700Bold' },
+  content: { padding: 16 },
+  section: { fontSize: 11, fontFamily: 'Inter_600SemiBold', letterSpacing: 0.8, marginTop: 20, marginBottom: 8 },
+  card: { borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden' },
+  themeRow: { flexDirection: 'row', gap: 8, padding: 8 },
+  themeOption: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 10 },
+  themeLabel: { fontSize: 14, fontFamily: 'Inter_500Medium' },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth },
+  rowIcon: { width: 30, height: 30, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  rowLabel: { flex: 1, fontSize: 15, fontFamily: 'Inter_500Medium' },
+  rowHint: { fontSize: 12, fontFamily: 'Inter_400Regular', marginTop: 2 },
+  rowValue: { fontSize: 14, fontFamily: 'Inter_400Regular' },
+  stepperText: { flex: 1 },
+  stepper: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  stepButton: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
+  stepValue: { minWidth: 36, textAlign: 'center', fontSize: 15, fontFamily: 'Inter_600SemiBold' },
+  note: { fontSize: 12, fontFamily: 'Inter_400Regular', marginTop: 6, marginHorizontal: 4 },
+  about: { alignItems: 'center', marginTop: 32, gap: 6, paddingHorizontal: 16 },
+  appName: { fontSize: 15, fontFamily: 'Inter_600SemiBold' },
+  aboutText: { fontSize: 13, fontFamily: 'Inter_400Regular', textAlign: 'center', lineHeight: 18 },
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', padding: 24 },
+  sheet: { borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, maxHeight: '80%', paddingTop: 16, overflow: 'hidden' },
+  sheetTitle: { fontSize: 17, fontFamily: 'Inter_600SemiBold', paddingHorizontal: 16, paddingBottom: 8 },
+  sheetItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth },
+  sheetCode: { fontSize: 15, fontFamily: 'Inter_600SemiBold' },
+  sheetName: { fontSize: 12, fontFamily: 'Inter_400Regular', marginTop: 2 },
 });
