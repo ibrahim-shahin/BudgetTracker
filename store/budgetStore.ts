@@ -1,6 +1,7 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
+
+import { localStore } from '@/storage/localStore';
 
 import type { Category, Expense, HistoryEvent, EventType, ThemeOption } from '@/types';
 
@@ -270,7 +271,7 @@ export const useBudgetStore = create<BudgetState>()(
     }),
     {
       name: 'budget-storage-v1',
-      storage: createJSONStorage(() => AsyncStorage),
+      storage: createJSONStorage(() => localStore),
     }
   )
 );
