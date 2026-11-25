@@ -63,6 +63,7 @@ export default function SettingsScreen() {
   const recurringCount = useBudgetStore(s => s.recurring.length);
   const categoryCount = useBudgetStore(s => s.categories.length);
   const expenseCount = useBudgetStore(s => s.expenses.length);
+  const lastBackupAt = useBudgetStore(s => s.lastBackupAt);
   const setTheme = useBudgetStore(s => s.setTheme);
   const setCurrency = useBudgetStore(s => s.setCurrency);
   const setPeriodStartDay = useBudgetStore(s => s.setPeriodStartDay);
@@ -91,7 +92,7 @@ export default function SettingsScreen() {
   const clearAll = async () => {
     const ok = await confirm(
       'Delete all data?',
-      `This deletes ${categoryCount} categories and ${expenseCount} expenses from this phone. This can't be undone.`,
+      `This deletes ${categoryCount} categories and ${expenseCount} expenses from this phone. Save a backup first if you might want them. This can't be undone.`,
       'Delete everything',
       true,
     );
@@ -182,6 +183,13 @@ export default function SettingsScreen() {
 
         <Text style={[styles.section, { color: colors.mutedForeground }]}>DATA</Text>
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <SettingRow
+            testID="backup-row"
+            icon="save"
+            label="Backup, restore and export"
+            value={lastBackupAt ? `Saved ${new Date(lastBackupAt).toLocaleDateString()}` : 'No backup yet'}
+            onPress={() => router.push('/backup')}
+          />
           <SettingRow testID="clear-all" icon="trash-2" label="Delete all data" destructive onPress={() => void clearAll()} />
         </View>
 

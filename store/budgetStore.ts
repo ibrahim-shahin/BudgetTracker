@@ -39,6 +39,8 @@ export interface RecurringInput extends ExpenseInput {
 }
 
 interface BudgetState extends BudgetData {
+  lastBackupAt: string | null;
+
   addCategory: (input: CategoryInput, period: PeriodKey) => string;
   /** Saves the details; a new budget applies from `period` onwards. */
   updateCategory: (id: string, input: CategoryInput, period: PeriodKey) => void;
@@ -65,16 +67,19 @@ interface BudgetState extends BudgetData {
   setCurrency: (currency: string) => number;
   setPeriodStartDay: (day: number) => void;
 
+  replaceData: (data: BudgetData) => void;
   clearData: () => void;
+  markBackedUp: (at?: Date) => void;
 }
 
-const EMPTY: BudgetData = {
+const EMPTY: BudgetData & { lastBackupAt: string | null } = {
   currency: DEFAULT_CURRENCY,
   periodStartDay: 1,
   theme: 'system',
   categories: [],
   expenses: [],
   recurring: [],
+  lastBackupAt: null,
 };
 
 let lastIdTime = 0;
@@ -284,7 +289,20 @@ export const useBudgetStore = create<BudgetState>()(
           set({ periodStartDay: day });
         },
 
-        clearData: () => set({ categories: [], expenses: [], recurring: [] }),
+        replaceData: data => {
+          set({
+            currency: data.currency,
+            periodStartDay: data.periodStartDay,
+            theme: data.theme,
+            categories: data.categories,
+            expenses: data.expenses,
+            recurring: data.recurring,
+          });
+        },
+
+        clearData: () => set({ categories: [], expenses: [], recurring: [], lastBackupAt: null }),
+
+        markBackedUp: (at = new Date()) => set({ lastBackupAt: at.toISOString() }),
       };
     },
     {
@@ -303,10 +321,23 @@ export const useBudgetStore = create<BudgetState>()(
         categories: s.categories,
         expenses: s.expenses,
         recurring: s.recurring,
+        lastBackupAt: s.lastBackupAt,
       }),
     },
   ),
 );
+
+/** The saved data, as a backup holds it. */
+export function selectBudgetData(s: BudgetData): BudgetData {
+  return {
+    currency: s.currency,
+    periodStartDay: s.periodStartDay,
+    theme: s.theme,
+    categories: s.categories,
+    expenses: s.expenses,
+    recurring: s.recurring,
+  };
+}
 
 /** The budget month today is in. */
 export function currentPeriod(startDay: number, on: LocalDate = today()): PeriodKey {

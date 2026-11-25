@@ -47,12 +47,14 @@ it('moves the start of the budget month', async () => {
   expect(state().periodStartDay).toBe(3);
 });
 
-it('changes the theme and opens recurring expenses', async () => {
+it('changes the theme and opens recurring expenses and backups', async () => {
   await render(<SettingsScreen />);
   await fireEvent.press(screen.getByTestId('theme-dark'));
   expect(state().theme).toBe('dark');
   await fireEvent.press(screen.getByTestId('recurring-row'));
   expect(routerMock.router.push).toHaveBeenCalledWith('/recurring');
+  await fireEvent.press(screen.getByTestId('backup-row'));
+  expect(routerMock.router.push).toHaveBeenCalledWith('/backup');
 });
 
 it('deletes all data only after asking', async () => {

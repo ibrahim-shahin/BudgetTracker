@@ -2,7 +2,7 @@ import { useBudgetStore } from '@/store/budgetStore';
 import type { BudgetData } from '@/types';
 
 /** Replaces the saved budget data, keeping the store's actions. */
-export function setBudgetData(data: Partial<BudgetData> = {}) {
+export function setBudgetData(data: Partial<BudgetData> & { lastBackupAt?: string | null } = {}) {
   useBudgetStore.setState({
     currency: 'JOD',
     periodStartDay: 1,
@@ -10,6 +10,7 @@ export function setBudgetData(data: Partial<BudgetData> = {}) {
     categories: [],
     expenses: [],
     recurring: [],
+    lastBackupAt: null,
     ...data,
   });
 }

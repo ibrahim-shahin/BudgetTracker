@@ -32,6 +32,7 @@ function RootLayoutNav() {
         <Stack.Screen name="category-form" options={{ presentation: 'modal' }} />
         <Stack.Screen name="recurring" />
         <Stack.Screen name="recurring-form" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="backup" />
       </Stack>
     </>
   );

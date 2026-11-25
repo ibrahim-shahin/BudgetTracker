@@ -138,7 +138,7 @@ describe('saving', () => {
     const saved = await new SQLiteStorage('budget-tracker.db').getItemAsync('budget-tracker');
     const parsed = JSON.parse(saved!);
     expect(parsed.version).toBe(1);
-    expect(Object.keys(parsed.state).sort()).toEqual(['categories', 'currency', 'expenses', 'periodStartDay', 'recurring', 'theme']);
+    expect(Object.keys(parsed.state).sort()).toEqual(['categories', 'currency', 'expenses', 'lastBackupAt', 'periodStartDay', 'recurring', 'theme']);
     expect(parsed.state.expenses[0].amount).toBe(2500);
   });
 
