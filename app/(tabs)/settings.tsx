@@ -12,6 +12,7 @@ import { changeCurrency } from '@/utils/budget';
 import { confirm, notify } from '@/utils/confirm';
 import { tapFeedback, warningFeedback } from '@/utils/haptics';
 import { CURRENCIES } from '@/utils/money';
+import { countOf } from '@/utils/text';
 
 const THEMES: { key: ThemeOption; label: string; icon: 'monitor' | 'sun' | 'moon' }[] = [
   { key: 'system', label: 'System', icon: 'monitor' },
@@ -92,7 +93,7 @@ export default function SettingsScreen() {
   const clearAll = async () => {
     const ok = await confirm(
       'Delete all data?',
-      `This deletes ${categoryCount} categories and ${expenseCount} expenses from this phone. Save a backup first if you might want them. This can't be undone.`,
+      `This deletes ${countOf(categoryCount, 'category', 'categories')} and ${countOf(expenseCount, 'expense', 'expenses')} from this phone. Save a backup first if you might want them. This can't be undone.`,
       'Delete everything',
       true,
     );
@@ -196,7 +197,7 @@ export default function SettingsScreen() {
         <View style={styles.about}>
           <Text style={[styles.appName, { color: colors.foreground }]}>Budget Tracker {Constants.expoConfig?.version ?? ''}</Text>
           <Text style={[styles.aboutText, { color: colors.mutedForeground }]}>
-            {categoryCount} categories · {expenseCount} expenses
+            {countOf(categoryCount, 'category', 'categories')} · {countOf(expenseCount, 'expense', 'expenses')}
           </Text>
           <Text style={[styles.aboutText, { color: colors.mutedForeground }]}>
             Everything stays on this phone. There is no account, and the app sends nothing anywhere.

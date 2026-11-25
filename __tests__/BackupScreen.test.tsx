@@ -63,7 +63,7 @@ it('restores a pasted backup after asking', async () => {
   await fireEvent.changeText(screen.getByTestId('paste-input'), JSON.stringify(backup));
   await fireEvent.press(screen.getByTestId('restore-pasted'));
   await waitFor(() => expect(state().expenses.map(e => e.id)).toEqual(['n1', 'n2']));
-  expect(jest.mocked(confirm).mock.calls[0][1]).toMatch(/1 categories and 2 expenses. They replace the 1 categories and 1 expenses/);
+  expect(jest.mocked(confirm).mock.calls[0][1]).toMatch(/1 category and 2 expenses. They replace the 1 category and 1 expense on/);
   expect(state().periodStartDay).toBe(25);
 });
 

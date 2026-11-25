@@ -62,5 +62,5 @@ it('deletes all data only after asking', async () => {
   await fireEvent.press(screen.getByTestId('clear-all'));
   await waitFor(() => expect(state().expenses).toEqual([]));
   expect(state().categories).toEqual([]);
-  expect(confirm).toHaveBeenCalledWith('Delete all data?', expect.stringContaining('1 categories and 1 expenses'), 'Delete everything', true);
+  expect(confirm).toHaveBeenCalledWith('Delete all data?', expect.stringContaining('1 category and 1 expense from'), 'Delete everything', true);
 });

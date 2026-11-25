@@ -13,6 +13,7 @@ import { confirm, notify } from '@/utils/confirm';
 import { expensesCsv } from '@/utils/exportCsv';
 import { canPickFiles, pickTextFile, shareFile } from '@/utils/files';
 import { successFeedback, warningFeedback } from '@/utils/haptics';
+import { countOf } from '@/utils/text';
 import { today } from '@/utils/dates';
 
 function Action({ icon, title, detail, onPress, testID, busy }: { icon: 'save' | 'file-text' | 'upload'; title: string; detail: string; onPress: () => void; testID: string; busy?: boolean }) {
@@ -84,8 +85,8 @@ export default function BackupScreen() {
     const incoming: BudgetData = result.data;
     const ok = await confirm(
       'Replace your data?',
-      `The backup has ${incoming.categories.length} categories and ${incoming.expenses.length} expenses. ` +
-        `They replace the ${categories.length} categories and ${expenses.length} expenses on this phone.`,
+      `The backup has ${countOf(incoming.categories.length, 'category', 'categories')} and ${countOf(incoming.expenses.length, 'expense', 'expenses')}. ` +
+        `They replace the ${countOf(categories.length, 'category', 'categories')} and ${countOf(expenses.length, 'expense', 'expenses')} on this phone.`,
       'Replace',
       true,
     );
@@ -131,7 +132,7 @@ export default function BackupScreen() {
           testID="export-csv"
           icon="file-text"
           title="Export expenses as CSV"
-          detail={`${expenseCount} expenses, for Excel or Google Sheets`}
+          detail={`${countOf(expenseCount, 'expense', 'expenses')}, for Excel or Google Sheets`}
           onPress={() => void exportCsv()}
           busy={busy === 'csv'}
         />
