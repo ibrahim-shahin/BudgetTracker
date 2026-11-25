@@ -251,7 +251,7 @@ export default function Dashboard() {
       />
 
       <TouchableOpacity
-        style={[styles.fab, { backgroundColor: colors.primary, bottom: bottomPad + 20 }]}
+        style={[styles.fab, { backgroundColor: colors.primary, bottom: 20 }]}
         onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); setShowAddCategory(true); }}
         activeOpacity={0.85}
       >
