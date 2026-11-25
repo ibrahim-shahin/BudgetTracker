@@ -15,7 +15,7 @@ const state = () => useBudgetStore.getState();
 
 beforeEach(() => {
   resetRouter();
-  jest.mocked(confirm).mockClear();
+  jest.mocked(confirm).mockReset().mockResolvedValue(true);
   setBudgetData({ categories: [category({ id: 'food' })], expenses: [expense({ categoryId: 'food', amount: 12345 })] });
 });
 

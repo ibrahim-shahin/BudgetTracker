@@ -20,6 +20,8 @@ const state = () => useBudgetStore.getState();
 
 beforeEach(() => {
   jest.clearAllMocks();
+  // A queued answer from one test must never reach the next.
+  jest.mocked(confirm).mockReset().mockResolvedValue(true);
   setBudgetData({
     categories: [category({ id: 'food', name: 'Food' })],
     expenses: [expense({ id: 'e1', categoryId: 'food', amount: 12345, merchant: '=HYPERLINK("http://evil","x")', notes: 'Bread, "fresh"' })],
@@ -36,6 +38,16 @@ it('saves a backup file and remembers when', async () => {
   expect(mime).toBe('application/json');
   expect(JSON.parse(text)).toMatchObject({ app: 'budget-tracker', version: 2, currency: 'JOD', expenses: [{ id: 'e1', amount: 12345 }] });
   await waitFor(() => expect(state().lastBackupAt).not.toBeNull());
+  expect(confirm).toHaveBeenCalledWith('Did you save the backup?', expect.any(String), 'Yes, saved');
+});
+
+it("doesn't record a backup that wasn't saved (regression: closing the share sheet counted as a backup)", async () => {
+  jest.mocked(confirm).mockResolvedValueOnce(false);
+  await render(<BackupScreen />);
+  await fireEvent.press(screen.getByTestId('save-backup'));
+  await waitFor(() => expect(confirm).toHaveBeenCalled());
+  expect(state().lastBackupAt).toBeNull();
+  expect(screen.getByTestId('last-backup')).toHaveTextContent('No backup saved yet');
 });
 
 it('exports a CSV that spreadsheets open safely (regression: formula injection and broken quoting)', async () => {

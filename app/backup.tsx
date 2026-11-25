@@ -53,8 +53,13 @@ export default function BackupScreen() {
     try {
       const data = selectBudgetData(useBudgetStore.getState());
       await shareFile(`budget-tracker-backup-${today()}.json`, JSON.stringify(createBackup(data), null, 2), 'application/json', 'Save your Budget Tracker backup');
-      markBackedUp();
-      successFeedback();
+      // The share sheet closes the same way whether or not the file went
+      // anywhere, so ask before recording the backup.
+      const saved = await confirm('Did you save the backup?', 'Only say yes if the file went somewhere safe, like Drive or Files.', 'Yes, saved');
+      if (saved) {
+        markBackedUp();
+        successFeedback();
+      }
     } catch {
       notify("Couldn't save the backup", 'Please try again.');
     } finally {

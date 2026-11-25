@@ -22,7 +22,7 @@ const expenses = () => useBudgetStore.getState().expenses;
 
 beforeEach(() => {
   resetRouter();
-  jest.mocked(confirm).mockClear();
+  jest.mocked(confirm).mockReset().mockResolvedValue(true);
   setBudgetData({ categories: [food, fuel] });
 });
 
