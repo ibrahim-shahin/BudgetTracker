@@ -23,5 +23,5 @@ it('keeps the tab bar out of the way of screen content (regression: it covered t
   // An absolutely positioned tab bar sat on top of each screen's bottom edge,
   // hiding the floating "add" button behind it.
   expect(mockTabs.screenOptions?.tabBarStyle?.position).toBeUndefined();
-  expect(mockTabs.names).toEqual(['index', 'analytics', 'settings']);
+  expect(mockTabs.names).toEqual(['index', 'expenses', 'analytics', 'settings']);
 });
