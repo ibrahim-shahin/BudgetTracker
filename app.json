@@ -13,6 +13,7 @@
     "android": {
       "package": "com.ibrahimshahin.budgettracker",
       "blockedPermissions": [
+        "android.permission.INTERNET",
         "android.permission.READ_EXTERNAL_STORAGE",
         "android.permission.WRITE_EXTERNAL_STORAGE",
         "android.permission.SYSTEM_ALERT_WINDOW"
