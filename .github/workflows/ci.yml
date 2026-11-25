@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      EXPO_NO_TELEMETRY: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24.14.1
+      - name: Install pnpm (the version in package.json) and dependencies
+        run: |
+          corepack enable
+          pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - name: Tests in Amman (UTC+3)
+        run: pnpm test
+      - name: Tests in New York (UTC-5), for date bugs west of UTC
+        run: pnpm test
+        env:
+          TZ: America/New_York
+      - name: Build the Android and web bundles
+        run: pnpm export
+      - run: pnpm doctor
