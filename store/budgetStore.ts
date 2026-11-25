@@ -31,6 +31,14 @@ function makeEvent(
   };
 }
 
+/** The category's expenses in its current cycle (since its last reset). */
+export function getCycleExpenses(category: Category, expenses: Expense[]): Expense[] {
+  const own = expenses.filter(e => e.categoryId === category.id);
+  if (!category.lastResetAt) return own;
+  const resetTime = new Date(category.lastResetAt).getTime();
+  return own.filter(e => new Date(e.date).getTime() >= resetTime);
+}
+
 interface BudgetState {
   categories: Category[];
   expenses: Expense[];
@@ -226,11 +234,7 @@ export const useBudgetStore = create<BudgetState>()(
       getCategoryExpenses: (categoryId) => {
         const { categories, expenses } = get();
         const cat = categories.find(c => c.id === categoryId);
-        if (!cat) return [];
-        const all = expenses.filter(e => e.categoryId === categoryId);
-        if (!cat.lastResetAt) return all;
-        const resetTime = new Date(cat.lastResetAt).getTime();
-        return all.filter(e => new Date(e.date).getTime() >= resetTime);
+        return cat ? getCycleExpenses(cat, expenses) : [];
       },
 
       getCategoryTotal: (categoryId) => {

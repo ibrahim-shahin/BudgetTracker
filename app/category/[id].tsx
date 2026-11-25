@@ -14,7 +14,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { format } from 'date-fns';
 import { useColors } from '@/hooks/useColors';
-import { useBudgetStore } from '@/store/budgetStore';
+import { getCycleExpenses, useBudgetStore } from '@/store/budgetStore';
 import ProgressBar from '@/components/ProgressBar';
 import HistoryEventItem from '@/components/HistoryEventItem';
 import AddExpenseModal from '@/components/AddExpenseModal';
@@ -43,9 +43,19 @@ export default function CategoryDetail() {
 
   const category = useBudgetStore(s => s.categories.find(c => c.id === id));
   const currency = useBudgetStore(s => s.currency);
-  const allExpenses = useBudgetStore(s => s.getCategoryExpenses(id ?? ''));
-  const allEvents = useBudgetStore(s => s.getCategoryEvents(id ?? ''));
-  const spent = useBudgetStore(s => s.getCategoryTotal(id ?? ''));
+  const expenses = useBudgetStore(s => s.expenses);
+  const events = useBudgetStore(s => s.events);
+
+  // Select the stored arrays and derive from them: a selector that builds a
+  // new array on every call makes the screen re-render forever.
+  const allExpenses = useMemo(() => (category ? getCycleExpenses(category, expenses) : []), [category, expenses]);
+  const allEvents = useMemo(
+    () => events
+      .filter(e => e.categoryId === id)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
+    [events, id]
+  );
+  const spent = allExpenses.reduce((sum, e) => sum + e.amount, 0);
 
   const [historyFilter, setHistoryFilter] = useState<HistoryFilter>('all');
   const [showAddExpense, setShowAddExpense] = useState(false);
