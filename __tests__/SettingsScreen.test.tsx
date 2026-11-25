@@ -4,7 +4,7 @@ import React from 'react';
 import SettingsScreen from '@/app/(tabs)/settings';
 import { useBudgetStore } from '@/store/budgetStore';
 import { category, expense } from '@/test-utils/data';
-import { resetRouter } from '@/test-utils/router';
+import { resetRouter, routerMock } from '@/test-utils/router';
 import { setBudgetData } from '@/test-utils/store';
 import { confirm } from '@/utils/confirm';
 
@@ -47,10 +47,12 @@ it('moves the start of the budget month', async () => {
   expect(state().periodStartDay).toBe(3);
 });
 
-it('changes the theme', async () => {
+it('changes the theme and opens recurring expenses', async () => {
   await render(<SettingsScreen />);
   await fireEvent.press(screen.getByTestId('theme-dark'));
   expect(state().theme).toBe('dark');
+  await fireEvent.press(screen.getByTestId('recurring-row'));
+  expect(routerMock.router.push).toHaveBeenCalledWith('/recurring');
 });
 
 it('deletes all data only after asking', async () => {

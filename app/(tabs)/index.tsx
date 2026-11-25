@@ -90,7 +90,7 @@ export default function BudgetScreen() {
     const ok = await confirm(
       `Delete ${row.category.name}?`,
       count > 0
-        ? `Its ${count} expense${count === 1 ? '' : 's'} will be deleted too. This can't be undone.`
+        ? `Its ${count} expense${count === 1 ? '' : 's'} and recurring expenses will be deleted too. This can't be undone.`
         : "This can't be undone.",
       'Delete',
       true,

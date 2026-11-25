@@ -32,6 +32,26 @@ export interface Expense {
   /** The day it was spent, in the phone's time zone. */
   date: LocalDate;
   createdAt: string;
+  /** Set when a recurring expense added it. */
+  recurringId?: string;
+}
+
+export type Frequency = 'weekly' | 'monthly' | 'yearly';
+
+export interface RecurringExpense {
+  id: string;
+  categoryId: string;
+  amount: number;
+  merchant: string;
+  notes: string;
+  tags: string[];
+  frequency: Frequency;
+  /** The first time it is due. Monthly and yearly ones repeat on its day. */
+  startDate: LocalDate;
+  /** The latest due date already added as an expense. */
+  lastAdded: LocalDate | null;
+  paused: boolean;
+  createdAt: string;
 }
 
 export type ThemeOption = 'light' | 'dark' | 'system';
@@ -44,6 +64,7 @@ export interface BudgetData {
   theme: ThemeOption;
   categories: Category[];
   expenses: Expense[];
+  recurring: RecurringExpense[];
 }
 
 export type SortOption = 'name' | 'remaining' | 'spent' | 'budget' | 'activity';
@@ -85,6 +106,12 @@ export const CATEGORY_ICONS = [
 
 export type CategoryIcon = (typeof CATEGORY_ICONS)[number];
 
+export const FREQUENCY_LABELS: Record<Frequency, string> = {
+  weekly: 'Every week',
+  monthly: 'Every month',
+  yearly: 'Every year',
+};
+
 export const LIMITS = {
   categoryName: 40,
   merchant: 60,
@@ -93,4 +120,5 @@ export const LIMITS = {
   tags: 8,
   categories: 200,
   expenses: 200_000,
+  recurring: 200,
 } as const;

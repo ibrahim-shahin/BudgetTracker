@@ -10,7 +10,7 @@ import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { ErrorBoundary } from '@/components/ErrorBoundary';
-import { useStoreHydrated } from '@/hooks/useAppReady';
+import { useRecurringCatchUp, useStoreHydrated } from '@/hooks/useAppReady';
 import { useColors } from '@/hooks/useColors';
 import { useViewStore } from '@/store/viewStore';
 
@@ -30,6 +30,8 @@ function RootLayoutNav() {
         <Stack.Screen name="category/[id]" />
         <Stack.Screen name="expense-form" options={{ presentation: 'modal' }} />
         <Stack.Screen name="category-form" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="recurring" />
+        <Stack.Screen name="recurring-form" options={{ presentation: 'modal' }} />
       </Stack>
     </>
   );
@@ -55,6 +57,7 @@ export default function RootLayout() {
   const hydrated = useStoreHydrated();
   const loadError = useViewStore(s => s.loadError);
   const ready = (fontsLoaded || Boolean(fontError)) && (hydrated || loadError !== null);
+  useRecurringCatchUp(hydrated);
 
   useEffect(() => {
     if (ready) SplashScreen.hideAsync();

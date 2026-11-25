@@ -7,13 +7,21 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
 import { useColors } from '@/hooks/useColors';
 import { useBudgetStore } from '@/store/budgetStore';
-import { LIMITS } from '@/types';
+import { type Frequency, FREQUENCY_LABELS, LIMITS } from '@/types';
 import { confirm } from '@/utils/confirm';
 import { addDays, formatDayLabel, isLocalDate, today } from '@/utils/dates';
 import { successFeedback, tapFeedback, warningFeedback } from '@/utils/haptics';
 import { closeAfterKeyboard } from '@/utils/keyboard';
 import { amountErrorMessage, amountInputValue, cleanAmountInput, currencyDecimals, parseAmount } from '@/utils/money';
 import { normalizeForSearch } from '@/utils/search';
+
+type Repeat = 'none' | Frequency;
+const REPEAT_OPTIONS: { key: Repeat; label: string }[] = [
+  { key: 'none', label: "Doesn't repeat" },
+  { key: 'weekly', label: FREQUENCY_LABELS.weekly },
+  { key: 'monthly', label: FREQUENCY_LABELS.monthly },
+  { key: 'yearly', label: FREQUENCY_LABELS.yearly },
+];
 
 function splitTags(text: string): string[] {
   return text
@@ -33,6 +41,7 @@ export default function ExpenseFormScreen() {
   const addExpense = useBudgetStore(s => s.addExpense);
   const updateExpense = useBudgetStore(s => s.updateExpense);
   const deleteExpense = useBudgetStore(s => s.deleteExpense);
+  const addRecurring = useBudgetStore(s => s.addRecurring);
   const decimals = currencyDecimals(currency);
 
   // Read once: the form keeps what the user types even if the store changes.
@@ -45,6 +54,7 @@ export default function ExpenseFormScreen() {
   const [merchant, setMerchant] = useState(editing?.merchant ?? '');
   const [notes, setNotes] = useState(editing?.notes ?? '');
   const [tags, setTags] = useState(editing?.tags.join(', ') ?? '');
+  const [repeat, setRepeat] = useState<Repeat>('none');
   const [amountError, setAmountError] = useState('');
   const [categoryError, setCategoryError] = useState('');
   const closingRef = useRef(false);
@@ -89,6 +99,7 @@ export default function ExpenseFormScreen() {
     }
     const input = { categoryId, amount: parsed.minor, merchant, notes, tags: splitTags(tags), date };
     if (editing) updateExpense(editing.id, input);
+    else if (repeat !== 'none') addRecurring({ ...input, frequency: repeat });
     else addExpense(input);
     successFeedback();
     close();
@@ -248,6 +259,45 @@ export default function ExpenseFormScreen() {
           onChangeText={setTags}
           autoCapitalize="none"
         />
+
+        {editing ? (
+          editing.recurringId ? (
+            <Text style={[styles.hint, { color: colors.mutedForeground }]}>
+              A recurring expense added this. Changes here only affect this one; change the repeat in Settings › Recurring expenses.
+            </Text>
+          ) : null
+        ) : (
+          <>
+            <Text style={[styles.label, { color: colors.mutedForeground }]}>REPEAT</Text>
+            <View style={styles.chips}>
+              {REPEAT_OPTIONS.map(opt => {
+                const selected = repeat === opt.key;
+                return (
+                  <TouchableOpacity
+                    key={opt.key}
+                    testID={`repeat-${opt.key}`}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected }}
+                    onPress={() => setRepeat(opt.key)}
+                    style={[
+                      styles.chip,
+                      { borderColor: selected ? colors.primary : colors.border, backgroundColor: selected ? colors.accent : colors.card },
+                    ]}
+                  >
+                    <Text style={[styles.chipText, { color: colors.foreground }]}>{opt.label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+            {repeat !== 'none' ? (
+              <Text style={[styles.hint, { color: colors.mutedForeground }]}>
+                {date > today()
+                  ? `It will be added on ${formatDayLabel(date)}, and then ${FREQUENCY_LABELS[repeat].toLowerCase()}.`
+                  : `It is added now${date < today() ? ', with any dates since then,' : ''} and then ${FREQUENCY_LABELS[repeat].toLowerCase()}.`}
+              </Text>
+            ) : null}
+          </>
+        )}
 
         <TouchableOpacity testID="save-expense" style={[styles.saveBtn, { backgroundColor: colors.primary }]} onPress={save} activeOpacity={0.85}>
           <Text style={[styles.saveText, { color: colors.primaryForeground }]}>{editing ? 'Save changes' : 'Save expense'}</Text>

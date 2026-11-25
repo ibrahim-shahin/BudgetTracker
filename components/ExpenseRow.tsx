@@ -42,6 +42,7 @@ export default function ExpenseRow({ expense, category, currency, showDate = fal
           <Text style={[styles.title, { color: colors.foreground }]} numberOfLines={1}>
             {title}
           </Text>
+          {expense.recurringId ? <Feather name="repeat" size={12} color={colors.mutedForeground} accessibilityLabel="Recurring" /> : null}
         </View>
         {details.length > 0 ? (
           <Text style={[styles.details, { color: colors.mutedForeground }]} numberOfLines={1}>

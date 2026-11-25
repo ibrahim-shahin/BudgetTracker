@@ -1,4 +1,4 @@
-import type { BudgetData, Category, Expense } from '@/types';
+import type { BudgetData, Category, Expense, RecurringExpense } from '@/types';
 
 export function category(overrides: Partial<Category> = {}): Category {
   return {
@@ -27,6 +27,23 @@ export function expense(overrides: Partial<Expense> = {}): Expense {
   };
 }
 
+export function recurring(overrides: Partial<RecurringExpense> = {}): RecurringExpense {
+  return {
+    id: 'rent',
+    categoryId: 'food',
+    amount: 350000,
+    merchant: 'Landlord',
+    notes: '',
+    tags: [],
+    frequency: 'monthly',
+    startDate: '2026-01-31',
+    lastAdded: null,
+    paused: false,
+    createdAt: '2026-01-31T08:00:00.000Z',
+    ...overrides,
+  };
+}
+
 export function budgetData(overrides: Partial<BudgetData> = {}): BudgetData {
   return {
     currency: 'JOD',
@@ -34,6 +51,7 @@ export function budgetData(overrides: Partial<BudgetData> = {}): BudgetData {
     theme: 'system',
     categories: [category()],
     expenses: [expense()],
+    recurring: [],
     ...overrides,
   };
 }

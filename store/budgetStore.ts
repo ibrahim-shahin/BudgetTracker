@@ -3,10 +3,19 @@ import { createJSONStorage, persist } from 'zustand/middleware';
 
 import { localStore } from '@/storage/localStore';
 import { useViewStore } from '@/store/viewStore';
-import { type BudgetData, type Category, type Expense, LIMITS, type ThemeOption } from '@/types';
+import {
+  type BudgetData,
+  type Category,
+  type Expense,
+  type Frequency,
+  LIMITS,
+  type RecurringExpense,
+  type ThemeOption,
+} from '@/types';
 import { changeCurrency, withBudgetFrom } from '@/utils/budget';
 import { type LocalDate, type PeriodKey, isLocalDate, isPeriodStartDay, periodOf, today } from '@/utils/dates';
 import { currencyDecimals, DEFAULT_CURRENCY, isKnownCurrency, isValidMinor } from '@/utils/money';
+import { dueDates, recurringExpenseId } from '@/utils/recurring';
 
 export interface CategoryInput {
   name: string;
@@ -25,11 +34,15 @@ export interface ExpenseInput {
   date: LocalDate;
 }
 
+export interface RecurringInput extends ExpenseInput {
+  frequency: Frequency;
+}
+
 interface BudgetState extends BudgetData {
   addCategory: (input: CategoryInput, period: PeriodKey) => string;
   /** Saves the details; a new budget applies from `period` onwards. */
   updateCategory: (id: string, input: CategoryInput, period: PeriodKey) => void;
-  /** Deletes the category with its expenses. */
+  /** Deletes the category with its expenses and recurring expenses. */
   deleteCategory: (id: string) => void;
   togglePin: (id: string) => void;
 
@@ -38,6 +51,14 @@ interface BudgetState extends BudgetData {
   /** Deletes the expense and returns it, so it can be put back. */
   deleteExpense: (id: string) => Expense | undefined;
   restoreExpense: (expense: Expense) => void;
+
+  /** Saves a recurring expense starting on `input.date`, and adds the dates already due. */
+  addRecurring: (input: RecurringInput, on?: LocalDate) => string;
+  updateRecurring: (id: string, input: RecurringInput) => void;
+  setRecurringPaused: (id: string, paused: boolean) => void;
+  deleteRecurring: (id: string) => void;
+  /** Adds every recurring expense due by `on`; returns how many were added. */
+  applyRecurring: (on?: LocalDate) => number;
 
   setTheme: (theme: ThemeOption) => void;
   /** Switches currency, keeping written amounts; returns how many were rounded. */
@@ -53,6 +74,7 @@ const EMPTY: BudgetData = {
   theme: 'system',
   categories: [],
   expenses: [],
+  recurring: [],
 };
 
 let lastIdTime = 0;
@@ -142,6 +164,7 @@ export const useBudgetStore = create<BudgetState>()(
           set(s => ({
             categories: s.categories.filter(c => c.id !== id),
             expenses: s.expenses.filter(e => e.categoryId !== id),
+            recurring: s.recurring.filter(r => r.categoryId !== id),
           }));
         },
 
@@ -172,12 +195,87 @@ export const useBudgetStore = create<BudgetState>()(
           set({ expenses: [...expenses, expense] });
         },
 
+        addRecurring: (input, on = today()) => {
+          const { date, ...details } = checkExpense(input);
+          const rule: RecurringExpense = {
+            id: newId(),
+            ...details,
+            frequency: input.frequency,
+            startDate: date,
+            lastAdded: null,
+            paused: false,
+            createdAt: new Date().toISOString(),
+          };
+          set(s => ({ recurring: [...s.recurring, rule] }));
+          get().applyRecurring(on);
+          return rule.id;
+        },
+
+        updateRecurring: (id, input) => {
+          const { date, ...details } = checkExpense(input);
+          set(s => ({
+            recurring: s.recurring.map(r => (r.id === id ? { ...r, ...details, frequency: input.frequency, startDate: date } : r)),
+          }));
+          get().applyRecurring();
+        },
+
+        setRecurringPaused: (id, paused) => {
+          // Dates missed while paused are not added afterwards.
+          const resumeFrom = today();
+          set(s => ({
+            recurring: s.recurring.map(r => {
+              if (r.id !== id) return r;
+              if (paused) return { ...r, paused };
+              const skipped = dueDates({ ...r, paused: false }, resumeFrom);
+              return { ...r, paused, lastAdded: skipped.length > 0 ? skipped[skipped.length - 1] : r.lastAdded };
+            }),
+          }));
+        },
+
+        deleteRecurring: id => {
+          // Expenses it already added stay.
+          set(s => ({ recurring: s.recurring.filter(r => r.id !== id) }));
+        },
+
+        applyRecurring: (on = today()) => {
+          const { recurring, expenses, categories } = get();
+          const existing = new Set(expenses.map(e => e.id));
+          const categoryIds = new Set(categories.map(c => c.id));
+          const added: Expense[] = [];
+          const updated = recurring.map(rule => {
+            if (!categoryIds.has(rule.categoryId)) return rule;
+            const dates = dueDates(rule, on);
+            if (dates.length === 0) return rule;
+            for (const date of dates) {
+              const id = recurringExpenseId(rule.id, date);
+              if (existing.has(id)) continue;
+              existing.add(id);
+              added.push({
+                id,
+                categoryId: rule.categoryId,
+                amount: rule.amount,
+                merchant: rule.merchant,
+                notes: rule.notes,
+                tags: rule.tags,
+                date,
+                createdAt: new Date().toISOString(),
+                recurringId: rule.id,
+              });
+            }
+            return { ...rule, lastAdded: dates[dates.length - 1] };
+          });
+          if (updated.some((rule, i) => rule !== recurring[i])) {
+            set(s => ({ recurring: updated, expenses: [...s.expenses, ...added] }));
+          }
+          return added.length;
+        },
+
         setTheme: theme => set({ theme }),
 
         setCurrency: currency => {
           assert(isKnownCurrency(currency), 'Unknown currency');
           const { data, inexact } = changeCurrency(get(), currency);
-          set({ currency, categories: data.categories, expenses: data.expenses });
+          set({ currency, categories: data.categories, expenses: data.expenses, recurring: data.recurring });
           return inexact;
         },
 
@@ -186,7 +284,7 @@ export const useBudgetStore = create<BudgetState>()(
           set({ periodStartDay: day });
         },
 
-        clearData: () => set({ categories: [], expenses: [] }),
+        clearData: () => set({ categories: [], expenses: [], recurring: [] }),
       };
     },
     {
@@ -204,6 +302,7 @@ export const useBudgetStore = create<BudgetState>()(
         theme: s.theme,
         categories: s.categories,
         expenses: s.expenses,
+        recurring: s.recurring,
       }),
     },
   ),

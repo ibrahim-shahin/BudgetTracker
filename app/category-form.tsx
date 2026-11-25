@@ -72,7 +72,7 @@ export default function CategoryFormScreen() {
     const count = useBudgetStore.getState().expenses.filter(e => e.categoryId === editing.id).length;
     const ok = await confirm(
       `Delete ${editing.name}?`,
-      count > 0 ? `Its ${count} expense${count === 1 ? '' : 's'} will be deleted too. This can't be undone.` : "This can't be undone.",
+      count > 0 ? `Its ${count} expense${count === 1 ? '' : 's'} and recurring expenses will be deleted too. This can't be undone.` : "This can't be undone.",
       'Delete',
       true,
     );

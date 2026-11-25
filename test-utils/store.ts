@@ -9,6 +9,7 @@ export function setBudgetData(data: Partial<BudgetData> = {}) {
     theme: 'system',
     categories: [],
     expenses: [],
+    recurring: [],
     ...data,
   });
 }

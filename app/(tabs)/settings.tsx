@@ -1,5 +1,6 @@
 import { Feather } from '@expo/vector-icons';
 import Constants from 'expo-constants';
+import { router } from 'expo-router';
 import React, { useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -59,6 +60,7 @@ export default function SettingsScreen() {
   const theme = useBudgetStore(s => s.theme);
   const currency = useBudgetStore(s => s.currency);
   const startDay = useBudgetStore(s => s.periodStartDay);
+  const recurringCount = useBudgetStore(s => s.recurring.length);
   const categoryCount = useBudgetStore(s => s.categories.length);
   const expenseCount = useBudgetStore(s => s.expenses.length);
   const setTheme = useBudgetStore(s => s.setTheme);
@@ -166,6 +168,13 @@ export default function SettingsScreen() {
               </TouchableOpacity>
             </View>
           </View>
+          <SettingRow
+            testID="recurring-row"
+            icon="repeat"
+            label="Recurring expenses"
+            value={recurringCount > 0 ? String(recurringCount) : undefined}
+            onPress={() => router.push('/recurring')}
+          />
         </View>
         {startDay > 28 ? (
           <Text style={[styles.note, { color: colors.mutedForeground }]}>In shorter months the month starts on their last day.</Text>

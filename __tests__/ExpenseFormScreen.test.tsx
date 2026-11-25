@@ -127,6 +127,19 @@ it('keeps an expense when deleting is cancelled', async () => {
   expect(routerMock.router.back).not.toHaveBeenCalled();
 });
 
+it('can repeat a new expense every month', async () => {
+  resetRouter({ categoryId: 'food' });
+  await render(<ExpenseFormScreen />);
+  await typeAmount('350');
+  await fireEvent.changeText(screen.getByTestId('merchant-input'), 'Rent');
+  await fireEvent.press(screen.getByTestId('repeat-monthly'));
+  await fireEvent.press(screen.getByTestId('save-expense'));
+
+  const { recurring } = useBudgetStore.getState();
+  expect(recurring).toEqual([expect.objectContaining({ frequency: 'monthly', amount: 350000, startDate: TODAY, lastAdded: TODAY })]);
+  expect(expenses()).toEqual([expect.objectContaining({ amount: 350000, merchant: 'Rent', date: TODAY, recurringId: recurring[0].id })]);
+});
+
 it('says when the expense to edit is gone', async () => {
   resetRouter({ id: 'missing' });
   await render(<ExpenseFormScreen />);

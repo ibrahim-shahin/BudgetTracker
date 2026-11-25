@@ -1,4 +1,4 @@
-import type { Category, Expense } from '@/types';
+import type { Category, Expense, RecurringExpense } from '@/types';
 import { type PeriodKey, isInPeriod } from '@/utils/dates';
 import { currencyDecimals, rescaleMinor } from '@/utils/money';
 import { normalizeForSearch } from '@/utils/search';
@@ -96,7 +96,7 @@ export function merchantTotals(expenses: Expense[]): { name: string; total: numb
  * exchange rate); going to fewer decimals rounds, and `inexact` counts the
  * amounts that changed because of it.
  */
-export function changeCurrency<T extends { currency: string; categories: Category[]; expenses: Expense[] }>(
+export function changeCurrency<T extends { currency: string; categories: Category[]; expenses: Expense[]; recurring: RecurringExpense[] }>(
   data: T,
   currency: string,
 ): { data: T; inexact: number } {
@@ -116,6 +116,7 @@ export function changeCurrency<T extends { currency: string; categories: Categor
       currency,
       categories: data.categories.map(c => ({ ...c, budgets: c.budgets.map(b => ({ ...b, amount: convert(b.amount) })) })),
       expenses: data.expenses.map(e => ({ ...e, amount: positive(e.amount) })),
+      recurring: data.recurring.map(r => ({ ...r, amount: positive(r.amount) })),
     },
     inexact,
   };
