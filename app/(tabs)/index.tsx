@@ -13,7 +13,7 @@ import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { useColors } from '@/hooks/useColors';
-import { useBudgetStore } from '@/store/budgetStore';
+import { getLastExpenseDateFor, getSpentByCategory, useBudgetStore } from '@/store/budgetStore';
 import CategoryCard from '@/components/CategoryCard';
 import AddExpenseModal from '@/components/AddExpenseModal';
 import AddCategoryModal from '@/components/AddCategoryModal';
@@ -44,8 +44,7 @@ export default function Dashboard() {
 
   const categories = useBudgetStore(s => s.categories);
   const currency = useBudgetStore(s => s.currency);
-  const getCategoryTotal = useBudgetStore(s => s.getCategoryTotal);
-  const getLastExpenseDate = useBudgetStore(s => s.getLastExpenseDate);
+  const expenses = useBudgetStore(s => s.expenses);
 
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState<SortOption>('name');
@@ -58,8 +57,10 @@ export default function Dashboard() {
   const [selectedExpenseCategory, setSelectedExpenseCategory] = useState<string | undefined>();
   const [showSort, setShowSort] = useState(false);
 
+  // Derived from the expenses themselves, so the totals follow every change.
+  const spentByCategory = useMemo(() => getSpentByCategory(categories, expenses), [categories, expenses]);
   const totalBudget = useMemo(() => categories.reduce((s, c) => s + c.budget, 0), [categories]);
-  const totalSpent = useMemo(() => categories.reduce((s, c) => s + getCategoryTotal(c.id), 0), [categories, getCategoryTotal]);
+  const totalSpent = useMemo(() => categories.reduce((s, c) => s + (spentByCategory.get(c.id) ?? 0), 0), [categories, spentByCategory]);
   const totalRemaining = totalBudget - totalSpent;
 
   const filteredAndSorted = useMemo(() => {
@@ -71,7 +72,7 @@ export default function Dashboard() {
     }
 
     list = list.filter(c => {
-      const spent = getCategoryTotal(c.id);
+      const spent = spentByCategory.get(c.id) ?? 0;
       const remaining = c.budget - spent;
       switch (filter) {
         case 'overspent': return remaining < 0;
@@ -82,16 +83,16 @@ export default function Dashboard() {
     });
 
     list.sort((a, b) => {
-      const spentA = getCategoryTotal(a.id);
-      const spentB = getCategoryTotal(b.id);
+      const spentA = spentByCategory.get(a.id) ?? 0;
+      const spentB = spentByCategory.get(b.id) ?? 0;
       switch (sort) {
         case 'name': return a.name.localeCompare(b.name);
         case 'remaining': return (a.budget - spentA) - (b.budget - spentB);
         case 'spent': return spentB - spentA;
         case 'budget': return b.budget - a.budget;
         case 'activity': {
-          const dA = getLastExpenseDate(a.id) ?? a.createdAt;
-          const dB = getLastExpenseDate(b.id) ?? b.createdAt;
+          const dA = getLastExpenseDateFor(a.id, expenses) ?? a.createdAt;
+          const dB = getLastExpenseDateFor(b.id, expenses) ?? b.createdAt;
           return new Date(dB).getTime() - new Date(dA).getTime();
         }
         case 'overspent': return (a.budget - spentA) - (b.budget - spentB);
@@ -102,7 +103,7 @@ export default function Dashboard() {
     const pinned = list.filter(c => c.pinned);
     const unpinned = list.filter(c => !c.pinned);
     return [...pinned, ...unpinned];
-  }, [categories, search, sort, filter, getCategoryTotal, getLastExpenseDate]);
+  }, [categories, expenses, search, sort, filter, spentByCategory]);
 
   const topPad = isWeb ? 67 : insets.top;
   const bottomPad = isWeb ? 34 : insets.bottom;
@@ -131,14 +132,14 @@ export default function Dashboard() {
             </Text>
           </View>
           <View style={[styles.summaryDivider, { backgroundColor: colors.border }]} />
-          <View style={styles.summaryItem}>
+          <View style={styles.summaryItem} testID="summary-spent">
             <Text style={[styles.summaryLabel, { color: colors.mutedForeground }]}>Spent</Text>
             <Text style={[styles.summaryValue, { color: colors.foreground }]}>
               {currency} {totalSpent.toFixed(0)}
             </Text>
           </View>
           <View style={[styles.summaryDivider, { backgroundColor: colors.border }]} />
-          <View style={styles.summaryItem}>
+          <View style={styles.summaryItem} testID="summary-remaining">
             <Text style={[styles.summaryLabel, { color: colors.mutedForeground }]}>Remaining</Text>
             <Text style={[styles.summaryValue, { color: totalRemaining < 0 ? colors.destructive : colors.success }]}>
               {totalRemaining < 0 ? '−' : ''}{currency} {Math.abs(totalRemaining).toFixed(0)}

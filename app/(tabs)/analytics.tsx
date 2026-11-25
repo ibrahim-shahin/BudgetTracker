@@ -9,7 +9,7 @@ import {
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
-import { useBudgetStore } from '@/store/budgetStore';
+import { getSpentByCategory, useBudgetStore } from '@/store/budgetStore';
 import EmptyState from '@/components/EmptyState';
 
 function HorizontalBar({ progress, color, height = 10 }: { progress: number; color: string; height?: number }) {
@@ -29,25 +29,22 @@ export default function Analytics() {
   const categories = useBudgetStore(s => s.categories);
   const expenses = useBudgetStore(s => s.expenses);
   const currency = useBudgetStore(s => s.currency);
-  const getCategoryTotal = useBudgetStore(s => s.getCategoryTotal);
+  // Derived from the expenses themselves, so the overview follows every change.
+  const spentByCategory = useMemo(() => getSpentByCategory(categories, expenses), [categories, expenses]);
+  const spentOf = (id: string) => spentByCategory.get(id) ?? 0;
 
   const totalBudget = useMemo(() => categories.reduce((s, c) => s + c.budget, 0), [categories]);
-  const totalSpent = useMemo(() => categories.reduce((s, c) => s + getCategoryTotal(c.id), 0), [categories, getCategoryTotal]);
-  const overspentCount = useMemo(
-    () => categories.filter(c => getCategoryTotal(c.id) > c.budget).length,
-    [categories, getCategoryTotal]
-  );
+  const totalSpent = categories.reduce((s, c) => s + spentOf(c.id), 0);
+  const overspentCount = categories.filter(c => spentOf(c.id) > c.budget).length;
 
-  const categoryData = useMemo(() => {
-    return categories
-      .map(c => ({
-        category: c,
-        spent: getCategoryTotal(c.id),
-        remaining: c.budget - getCategoryTotal(c.id),
-        progress: c.budget > 0 ? getCategoryTotal(c.id) / c.budget : 0,
-      }))
-      .sort((a, b) => b.spent - a.spent);
-  }, [categories, getCategoryTotal]);
+  const categoryData = categories
+    .map(c => ({
+      category: c,
+      spent: spentOf(c.id),
+      remaining: c.budget - spentOf(c.id),
+      progress: c.budget > 0 ? spentOf(c.id) / c.budget : 0,
+    }))
+    .sort((a, b) => b.spent - a.spent);
 
   const merchantData = useMemo(() => {
     const map = new Map<string, number>();
@@ -99,14 +96,14 @@ export default function Analytics() {
               <Text style={[styles.summaryLabel, { color: colors.mutedForeground }]}>Total Budget</Text>
             </View>
             <View style={[styles.summaryDivider, { backgroundColor: colors.border }]} />
-            <View style={styles.summaryCell}>
+            <View style={styles.summaryCell} testID="overview-spent">
               <Text style={[styles.summaryNum, { color: colors.foreground }]}>
                 {currency} {totalSpent.toFixed(0)}
               </Text>
               <Text style={[styles.summaryLabel, { color: colors.mutedForeground }]}>Total Spent</Text>
             </View>
             <View style={[styles.summaryDivider, { backgroundColor: colors.border }]} />
-            <View style={styles.summaryCell}>
+            <View style={styles.summaryCell} testID="overview-overspent">
               <Text style={[styles.summaryNum, { color: overspentCount > 0 ? colors.destructive : colors.success }]}>
                 {overspentCount}
               </Text>

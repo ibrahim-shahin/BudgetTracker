@@ -39,6 +39,25 @@ export function getCycleExpenses(category: Category, expenses: Expense[]): Expen
   return own.filter(e => new Date(e.date).getTime() >= resetTime);
 }
 
+/** What each category has spent in its current cycle, by category id. */
+export function getSpentByCategory(categories: Category[], expenses: Expense[]): Map<string, number> {
+  const spent = new Map<string, number>();
+  for (const category of categories) {
+    spent.set(category.id, getCycleExpenses(category, expenses).reduce((sum, e) => sum + e.amount, 0));
+  }
+  return spent;
+}
+
+/** The date of the category's latest expense, or null. */
+export function getLastExpenseDateFor(categoryId: string, expenses: Expense[]): string | null {
+  let latest: string | null = null;
+  for (const e of expenses) {
+    if (e.categoryId !== categoryId) continue;
+    if (latest === null || new Date(e.date).getTime() > new Date(latest).getTime()) latest = e.date;
+  }
+  return latest;
+}
+
 interface BudgetState {
   categories: Category[];
   expenses: Expense[];
@@ -247,12 +266,7 @@ export const useBudgetStore = create<BudgetState>()(
           .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       },
 
-      getLastExpenseDate: (categoryId) => {
-        const expenses = get().expenses
-          .filter(e => e.categoryId === categoryId)
-          .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-        return expenses[0]?.date ?? null;
-      },
+      getLastExpenseDate: (categoryId) => getLastExpenseDateFor(categoryId, get().expenses),
     }),
     {
       name: 'budget-storage-v1',
