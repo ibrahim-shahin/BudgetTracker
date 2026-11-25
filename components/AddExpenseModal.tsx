@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   Modal,
   View,
@@ -16,7 +16,6 @@ import * as Haptics from 'expo-haptics';
 import { format } from 'date-fns';
 import { useColors } from '@/hooks/useColors';
 import { useBudgetStore } from '@/store/budgetStore';
-import type { Category } from '@/types';
 
 interface Props {
   visible: boolean;
@@ -25,13 +24,26 @@ interface Props {
 }
 
 export default function AddExpenseModal({ visible, onClose, initialCategoryId }: Props) {
+  return (
+    <Modal
+      visible={visible}
+      animationType="slide"
+      transparent
+      onRequestClose={onClose}
+    >
+      {visible ? <ExpenseSheet onClose={onClose} initialCategoryId={initialCategoryId} /> : null}
+    </Modal>
+  );
+}
+
+function ExpenseSheet({ onClose, initialCategoryId }: Omit<Props, 'visible'>) {
   const colors = useColors();
   const categories = useBudgetStore(s => s.categories);
   const currency = useBudgetStore(s => s.currency);
   const addExpense = useBudgetStore(s => s.addExpense);
 
   const [amount, setAmount] = useState('');
-  const [selectedCategoryId, setSelectedCategoryId] = useState(initialCategoryId ?? '');
+  const [selectedCategoryId, setSelectedCategoryId] = useState(initialCategoryId ?? (categories[0]?.id ?? ''));
   const [merchant, setMerchant] = useState('');
   const [notes, setNotes] = useState('');
   const [tags, setTags] = useState('');
@@ -39,17 +51,6 @@ export default function AddExpenseModal({ visible, onClose, initialCategoryId }:
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
   const [amountError, setAmountError] = useState('');
 
-  useEffect(() => {
-    if (visible) {
-      setAmount('');
-      setSelectedCategoryId(initialCategoryId ?? (categories[0]?.id ?? ''));
-      setMerchant('');
-      setNotes('');
-      setTags('');
-      setDate(format(new Date(), 'yyyy-MM-dd'));
-      setAmountError('');
-    }
-  }, [visible, initialCategoryId]);
 
   const selectedCategory = categories.find(c => c.id === selectedCategoryId);
 
@@ -80,12 +81,6 @@ export default function AddExpenseModal({ visible, onClose, initialCategoryId }:
   };
 
   return (
-    <Modal
-      visible={visible}
-      animationType="slide"
-      transparent
-      onRequestClose={onClose}
-    >
       <KeyboardAvoidingView
         style={styles.wrapper}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -215,7 +210,6 @@ export default function AddExpenseModal({ visible, onClose, initialCategoryId }:
           </ScrollView>
         </View>
       </KeyboardAvoidingView>
-    </Modal>
   );
 }
 

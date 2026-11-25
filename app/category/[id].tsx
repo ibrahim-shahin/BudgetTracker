@@ -7,7 +7,6 @@ import {
   StyleSheet,
   ScrollView,
   Platform,
-  Alert,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -47,7 +46,6 @@ export default function CategoryDetail() {
   const allExpenses = useBudgetStore(s => s.getCategoryExpenses(id ?? ''));
   const allEvents = useBudgetStore(s => s.getCategoryEvents(id ?? ''));
   const spent = useBudgetStore(s => s.getCategoryTotal(id ?? ''));
-  const deleteExpense = useBudgetStore(s => s.deleteExpense);
 
   const [historyFilter, setHistoryFilter] = useState<HistoryFilter>('all');
   const [showAddExpense, setShowAddExpense] = useState(false);

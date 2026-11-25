@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   Modal,
   View,
@@ -25,35 +25,31 @@ interface Props {
 }
 
 export default function AddCategoryModal({ visible, onClose, editingCategory }: Props) {
+  return (
+    <Modal
+      visible={visible}
+      animationType="slide"
+      transparent
+      onRequestClose={onClose}
+    >
+      {visible ? <CategorySheet onClose={onClose} editingCategory={editingCategory} /> : null}
+    </Modal>
+  );
+}
+
+function CategorySheet({ onClose, editingCategory }: Omit<Props, 'visible'>) {
   const colors = useColors();
   const addCategory = useBudgetStore(s => s.addCategory);
   const updateCategory = useBudgetStore(s => s.updateCategory);
   const currency = useBudgetStore(s => s.currency);
 
-  const [name, setName] = useState('');
-  const [budget, setBudget] = useState('');
-  const [selectedColor, setSelectedColor] = useState(CATEGORY_COLORS[5]);
-  const [selectedIcon, setSelectedIcon] = useState(CATEGORY_ICONS[0]);
+  const [name, setName] = useState(editingCategory?.name ?? '');
+  const [budget, setBudget] = useState(editingCategory ? editingCategory.budget.toString() : '');
+  const [selectedColor, setSelectedColor] = useState(editingCategory?.color ?? CATEGORY_COLORS[5]);
+  const [selectedIcon, setSelectedIcon] = useState(editingCategory?.icon ?? CATEGORY_ICONS[0]);
   const [nameError, setNameError] = useState('');
   const [budgetError, setBudgetError] = useState('');
 
-  useEffect(() => {
-    if (visible) {
-      if (editingCategory) {
-        setName(editingCategory.name);
-        setBudget(editingCategory.budget.toString());
-        setSelectedColor(editingCategory.color);
-        setSelectedIcon(editingCategory.icon);
-      } else {
-        setName('');
-        setBudget('');
-        setSelectedColor(CATEGORY_COLORS[5]);
-        setSelectedIcon(CATEGORY_ICONS[0]);
-      }
-      setNameError('');
-      setBudgetError('');
-    }
-  }, [visible, editingCategory]);
 
   const handleSave = () => {
     let valid = true;
@@ -83,12 +79,6 @@ export default function AddCategoryModal({ visible, onClose, editingCategory }: 
   };
 
   return (
-    <Modal
-      visible={visible}
-      animationType="slide"
-      transparent
-      onRequestClose={onClose}
-    >
       <KeyboardAvoidingView
         style={styles.wrapper}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -206,7 +196,6 @@ export default function AddCategoryModal({ visible, onClose, editingCategory }: 
           </ScrollView>
         </View>
       </KeyboardAvoidingView>
-    </Modal>
   );
 }
 

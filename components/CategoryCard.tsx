@@ -74,7 +74,7 @@ export default function CategoryCard({ category, onAddExpense, onEdit, onReset }
     );
   };
 
-  const MenuModal = () => (
+  const menu = (
     <Modal
       visible={menuVisible}
       transparent
@@ -120,7 +120,7 @@ export default function CategoryCard({ category, onAddExpense, onEdit, onReset }
 
   return (
     <>
-      <MenuModal />
+      {menu}
       <TouchableOpacity
         style={[
           styles.card,
